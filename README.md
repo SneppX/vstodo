@@ -36,9 +36,13 @@ VSTodo is currently in its initial development stage. Features and architecture 
 - Test features as they are implemented.
 - Expand incrementally.
 
-## License
+## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and pull request instructions.
+
+## License
 VSTodo is licensed under the [MIT License](LICENSE).
 ---
 **VSTodo — Version control, built differently.**
+
 
