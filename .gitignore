@@ -1,0 +1,63 @@
+﻿# VSTodo
+.vstodo/
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.app
+vstodo
+
+# Go build artifacts
+/bin/
+/build/
+/dist/
+*.test
+*.out
+*.prof
+coverage.txt
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.old
+*~
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test artifacts
+/test-results/
+/test-output/
+/benchmark-results/
+
+# Profiling
+*.pprof
+*.trace
+core
+core.*
+
+# Secrets
+.env
+.env.*
+!.env.example
+secrets/
