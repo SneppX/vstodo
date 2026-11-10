@@ -38,7 +38,7 @@ VSTodo is currently in its initial development stage. Features and architecture 
 
 ## License
 
-License information will be added later.
-
+VSTodo is licensed under the [MIT License](LICENSE).
 ---
 **VSTodo — Version control, built differently.**
+
