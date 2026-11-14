@@ -5,13 +5,12 @@ package index
 
 import (
 	"bytes"
-	"crypto/sha1"
+	cryptoSHA1 "crypto/sha1"
 	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"vstodo/internal/sha1"
 )
@@ -81,7 +80,7 @@ func (idx *Index) loadBinary(data []byte) error {
 		return fmt.Errorf("index: truncated DIRC file")
 	}
 	checksumOffset := len(data) - 20
-	sum := sha1.Sum(data[:checksumOffset])
+	sum := cryptoSHA1.Sum(data[:checksumOffset])
 	if !bytes.Equal(sum[:], data[checksumOffset:]) {
 		return fmt.Errorf("index: checksum mismatch")
 	}
@@ -164,7 +163,11 @@ func (idx *Index) Save() error {
 	for _, path := range paths {
 		start := buf.Len()
 		for i := 0; i < 10; i++ {
-			_ = binary.Write(&buf, binary.BigEndian, uint32(0))
+			value := uint32(0)
+			if i == 6 {
+				value = idx.Mode(path)
+			}
+			_ = binary.Write(&buf, binary.BigEndian, value)
 		}
 		id := idx.entries[path]
 		buf.Write(id.Bytes())
@@ -183,7 +186,7 @@ func (idx *Index) Save() error {
 			buf.WriteByte(0)
 		}
 	}
-	sum := sha1.Sum(buf.Bytes())
+	sum := cryptoSHA1.Sum(buf.Bytes())
 	buf.Write(sum[:])
 	return os.WriteFile(idx.path, buf.Bytes(), 0o644)
 }
