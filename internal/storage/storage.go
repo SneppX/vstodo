@@ -56,6 +56,10 @@ func (s *LooseStore) Load(id sha1.Digest) (*object.Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	actualID := object.ComputeID(typ, data)
+	if actualID != id {
+		return nil, fmt.Errorf("storage: object integrity check failed for %s (content hashes to %s)", id.Hex(), actualID.Hex())
+	}
 	return &object.Object{Type: typ, Data: data, ID: id}, nil
 }
 
