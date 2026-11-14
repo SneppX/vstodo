@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"vstodo/internal/sha1"
+	"vstodo/internal/object"
 )
 
 func TestIndexSavesGitDIRCVersion2(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "index")
 	idx := NewIndex(path)
-	id := sha1.Sum([]byte("object id"))
+	id := object.HashBlob([]byte("object id"))
 	idx.Add("src/main.go", id)
 	idx.AddMode("bin/tool", id, 0100755)
 	if err := idx.Save(); err != nil {
@@ -42,7 +42,7 @@ func TestIndexSavesGitDIRCVersion2(t *testing.T) {
 
 func TestIndexLoadsLegacyTextAndMigratesOnSave(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "index")
-	id := sha1.Sum([]byte("legacy"))
+	id := object.HashBlob([]byte("legacy"))
 	legacy := []byte(id.Hex() + "\tlegacy.txt\n")
 	if err := os.WriteFile(path, legacy, 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -69,7 +69,7 @@ func TestIndexLoadsLegacyTextAndMigratesOnSave(t *testing.T) {
 func TestIndexRejectsChecksumCorruption(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "index")
 	idx := NewIndex(path)
-	idx.Add("file.txt", sha1.Sum([]byte("file")))
+	idx.Add("file.txt", object.HashBlob([]byte("file")))
 	if err := idx.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
