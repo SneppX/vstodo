@@ -75,7 +75,7 @@ func Parse(id sha1.Digest, data []byte) (*Commit, error) {
 		return nil, fmt.Errorf("commit: missing tree header")
 	}
 	if headerEnd >= 0 {
-		c.Message = string(message)
+		c.Message = strings.TrimRight(string(message), "\\n")
 	}
 	return c, nil
 }
