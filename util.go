@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"vstodo/internal/app"
+	"vstodo/internal/commit"
 	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 	"vstodo/internal/tree"
@@ -145,6 +146,37 @@ func treeToMap(a *app.App, id sha1.Digest, prefix string) (map[string]sha1.Diges
 // currentCommitID resolves HEAD to a commit id.
 func currentCommitID(a *app.App) (sha1.Digest, error) {
 	return a.Refs.Head()
+}
+
+// ensureIndexFromHEAD upgrades repositories created by older VSTodo versions,
+// which cleared the index after each commit, to a full-snapshot index.
+func ensureIndexFromHEAD(a *app.App) error {
+	if len(a.Index.Entries()) != 0 {
+		return nil
+	}
+	headID, err := currentCommitID(a)
+	if err != nil || headID == sha1.Zero {
+		return nil
+	}
+	obj, err := a.Store.Load(headID)
+	if err != nil {
+		return err
+	}
+	if obj.Type != object.CommitType {
+		return fmt.Errorf("HEAD %s does not point to a commit", headID.Hex())
+	}
+	parsed, err := commit.Parse(headID, obj.Data)
+	if err != nil {
+		return err
+	}
+	entries, err := treeToMap(a, parsed.Tree, "")
+	if err != nil {
+		return err
+	}
+	for path, id := range entries {
+		a.Index.Add(path, id)
+	}
+	return nil
 }
 
 // worktreePath resolves a repository-relative path and rejects traversal or
