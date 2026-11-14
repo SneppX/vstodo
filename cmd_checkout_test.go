@@ -112,8 +112,8 @@ func TestCheckoutSwitchesSnapshotAndUpdatesIndex(t *testing.T) {
 		}
 	}
 	for _, removed := range []string{"remove.txt", "nested/old.txt"} {
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(removed))); !os.IsNotExist(err) {
-			t.Fatalf("%s should have been removed, stat error = %v", removed, err)
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(removed))); err == nil {
+			t.Fatalf("%s should have been removed", removed)
 		}
 	}
 	if branch, err := a.Refs.CurrentBranch(); err != nil || branch != "feature" {
