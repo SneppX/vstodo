@@ -3,6 +3,8 @@
 package app
 
 import (
+	"os"
+
 	"vstodo/internal/index"
 	"vstodo/internal/ref"
 	"vstodo/internal/repo"
@@ -44,5 +46,11 @@ func Init(root string) (*App, error) {
 	return &App{Repo: r, Store: store, Index: idx, Refs: refs}, nil
 }
 
-// SaveIndex persists the staging index.
-func (a *App) SaveIndex() error { return a.Index.Save() }
+// SaveIndex persists the staging snapshot and records that the repository
+// uses the full-snapshot index semantics introduced by current VSTodo.
+func (a *App) SaveIndex() error {
+	if err := a.Index.Save(); err != nil {
+		return err
+	}
+	return os.WriteFile(a.Repo.GitPath("index.snapshot-v1"), []byte("1\\n"), 0o644)
+}
