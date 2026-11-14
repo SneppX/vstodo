@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,18 @@ func (s *LooseStore) Store(obj *object.Object) (sha1.Digest, error) {
 		return id, err
 	}
 	path := s.objectPath(id)
+	if _, err := os.Stat(path); err == nil {
+		existing, loadErr := s.Load(id)
+		if loadErr != nil {
+			return id, fmt.Errorf("storage: existing object %s is invalid: %w", id.Hex(), loadErr)
+		}
+		if existing.Type != obj.Type || !bytes.Equal(existing.Data, obj.Data) {
+			return id, fmt.Errorf("storage: object ID collision for %s", id.Hex())
+		}
+		return id, nil
+	} else if !os.IsNotExist(err) {
+		return id, err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return id, err
 	}

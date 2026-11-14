@@ -123,3 +123,21 @@ func TestStorageRejectsObjectWithMismatchedContentHash(t *testing.T) {
 		t.Fatal("Load succeeded for an object whose content does not match its object ID")
 	}
 }
+
+
+func TestStorageStoreIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
+	obj := &object.Object{Type: object.BlobType, Data: []byte("same immutable object")}
+	first, err := store.Store(obj)
+	if err != nil {
+		t.Fatalf("first Store: %v", err)
+	}
+	second, err := store.Store(obj)
+	if err != nil {
+		t.Fatalf("second Store: %v", err)
+	}
+	if second != first {
+		t.Fatalf("second Store ID = %s, want %s", second.Hex(), first.Hex())
+	}
+}
