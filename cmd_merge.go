@@ -155,7 +155,11 @@ func requireCleanWorkingTree(a *app.App, headTree sha1.Digest) error {
 		if !exists {
 			return fmt.Errorf("merge: untracked file %q would be at risk; move or remove it first", path)
 		}
-		data, err := os.ReadFile(a.Repo.Path(path))
+		fullPath, err := worktreePath(a, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(fullPath)
 		if err != nil {
 			return err
 		}
