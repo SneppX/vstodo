@@ -5,7 +5,6 @@ import (
 
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
-	"vstodo/internal/index"
 	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 )
@@ -51,7 +50,9 @@ func cmdCommit(a *app.App, args []string) error {
 		return err
 	}
 
-	a.Index = index.NewIndex(a.Repo.GitPath("index"))
+	// The index represents the complete next snapshot, not only the latest
+	// additions. Keep its entries after committing so later commits retain
+	// files that were already tracked.
 	if err := a.SaveIndex(); err != nil {
 		return err
 	}
