@@ -124,7 +124,6 @@ func TestStorageRejectsObjectWithMismatchedContentHash(t *testing.T) {
 	}
 }
 
-
 func TestStorageStoreIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
