@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"vstodo/internal/commit"
 )
 
 func TestCherryPickCombinesNonConflictingChanges(t *testing.T) {
