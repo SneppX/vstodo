@@ -12,6 +12,9 @@ func cmdRm(a *app.App, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: vstodo rm <file> [file...]")
 	}
+	if err := ensureIndexFromHEAD(a); err != nil {
+		return err
+	}
 	for _, rel := range args {
 		rel = filepath.ToSlash(rel)
 		a.Index.Remove(rel)
