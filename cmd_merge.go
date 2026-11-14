@@ -104,6 +104,12 @@ func cmdMerge(a *app.App, args []string) error {
 	if err := a.Refs.WriteRef("refs/heads/"+currentBranch, otherID); err != nil {
 		return err
 	}
+	for path, id := range otherTree {
+		a.Index.Add(path, id)
+	}
+	if err := a.SaveIndex(); err != nil {
+		return err
+	}
 	fmt.Printf("Fast-forward %s to %s\n", currentBranch, otherID.Hex()[:7])
 	return nil
 }
@@ -143,12 +149,16 @@ func requireCleanWorkingTree(a *app.App, headTree sha1.Digest) error {
 		return err
 	}
 	staged := a.Index.Entries()
-	if len(staged) != len(tracked) {
-		return fmt.Errorf("merge: staged changes present; commit or unstage them first")
-	}
-	for path, id := range tracked {
-		if staged[path] != id {
+	// An empty index is the legacy state written by older VSTodo releases.
+	// Non-empty indexes must exactly match HEAD before a merge is safe.
+	if len(staged) != 0 {
+		if len(staged) != len(tracked) {
 			return fmt.Errorf("merge: staged changes present; commit or unstage them first")
+		}
+		for path, id := range tracked {
+			if staged[path] != id {
+				return fmt.Errorf("merge: staged changes present; commit or unstage them first")
+			}
 		}
 	}
 	files, err := walkFiles(a.Repo.Root)
