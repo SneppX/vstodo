@@ -48,14 +48,14 @@ func makeMergeFixture(t *testing.T, baseFiles, oursFiles, theirsFiles map[string
 
 func TestMergeCombinesChangesAcrossFiles(t *testing.T) {
 	a, root, oursID, theirsID := makeMergeFixture(t,
-		map[string]string{"left.txt": "base left\n","right.txt": "base right\n"},
-		map[string]string{"left.txt": "ours left\n","right.txt": "base right\n"},
-		map[string]string{"left.txt": "base left\n","right.txt": "theirs right\n"},
+		map[string]string{"left.txt": "base left\n", "right.txt": "base right\n"},
+		map[string]string{"left.txt": "ours left\n", "right.txt": "base right\n"},
+		map[string]string{"left.txt": "base left\n", "right.txt": "theirs right\n"},
 	)
 	if err := cmdMerge(a, []string{"feature"}); err != nil {
 		t.Fatalf("merge: %v", err)
 	}
-	for path, want := range map[string]string{"left.txt": "ours left\n","right.txt": "theirs right\n"} {
+	for path, want := range map[string]string{"left.txt": "ours left\n", "right.txt": "theirs right\n"} {
 		data, err := os.ReadFile(filepath.Join(root, path))
 		if err != nil || string(data) != want {
 			t.Fatalf("%s = %q, err=%v; want %q", path, data, err, want)
