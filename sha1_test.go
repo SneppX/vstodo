@@ -68,8 +68,8 @@ func TestSHA1Hasher(t *testing.T) {
 		t.Fatalf("Write: %v", err)
 	}
 	d := h.SumDigest()
-	if d.Hex() != "ef0493b275aa2080237f676d2ef6559246f56636" {
-		t.Fatalf("Hasher digest = %s, want ef0493b275aa2080237f676d2ef6559246f56636", d.Hex())
+	if d.Hex() != "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d" {
+		t.Fatalf("Hasher digest = %s, want aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d", d.Hex())
 	}
 	h.Reset()
 	if _, err := h.Write([]byte("world")); err != nil {

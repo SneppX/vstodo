@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -162,7 +163,7 @@ func TestRefCurrentBranchDetached(t *testing.T) {
 func TestRefErrNotFound(t *testing.T) {
 	dir := t.TempDir()
 	store := ref.NewStore(dir)
-	if _, err := store.ReadRef("refs/heads/nonexistent"); err != ref.ErrNotFound {
+	if _, err := store.ReadRef("refs/heads/nonexistent"); !errors.Is(err, ref.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

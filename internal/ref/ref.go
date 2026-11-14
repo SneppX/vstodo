@@ -106,11 +106,12 @@ func (s *Store) ListRefs() (map[string]sha1.Digest, error) {
 			if err != nil {
 				return err
 			}
-			d, err := s.ReadRef(filepath.Join(ns, rel))
+			name := filepath.ToSlash(filepath.Join(ns, rel))
+			d, err := s.ReadRef(name)
 			if err != nil {
 				return err
 			}
-			out[filepath.Join(ns, rel)] = d
+			out[name] = d
 			return nil
 		}); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, err

@@ -186,6 +186,9 @@ func TestWalkFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "sub", "b.txt"), []byte("b"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, ".vstodo"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .vstodo: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(root, ".vstodo", "ignore.txt"), []byte("ignore"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}

@@ -20,13 +20,12 @@ func makeRepo(t *testing.T, root string) *app.App {
 	if err != nil {
 		t.Fatalf("store blob: %v", err)
 	}
-	treeData := object.Marshal(object.TreeType, []byte("100644 file.txt\x00"))
-	treeData = append(treeData, blobID.Bytes()...)
+	treeData := append([]byte("100644 file.txt\x00"), blobID.Bytes()...)
 	treeID, err := a.Store.WriteRaw(object.TreeType, treeData)
 	if err != nil {
 		t.Fatalf("store tree: %v", err)
 	}
-	commitData := object.Marshal(object.CommitType, []byte("tree "+treeID.Hex()+"\n\nmessage\n"))
+	commitData := []byte("tree " + treeID.Hex() + "\n\nmessage\n")
 	commitID, err := a.Store.WriteRaw(object.CommitType, commitData)
 	if err != nil {
 		t.Fatalf("store commit: %v", err)

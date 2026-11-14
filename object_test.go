@@ -13,15 +13,15 @@ import (
 
 func TestObjectComputeID(t *testing.T) {
 	id := object.ComputeID(object.BlobType, []byte("hello"))
-	if id.Hex() != "ef0493b275aa2080237f676d2ef6559246f56636" {
-		t.Fatalf("ComputeID(blob, hello) = %s, want ef0493b275aa2080237f676d2ef6559246f56636", id.Hex())
+	if id.Hex() != "b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0" {
+		t.Fatalf("ComputeID(blob, hello) = %s, want b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0", id.Hex())
 	}
 }
 
 func TestObjectHashBlobGitCompatible(t *testing.T) {
 	id := object.HashBlob([]byte("hello"))
-	if id.Hex() != "ef0493b275aa2080237f676d2ef6559246f56636" {
-		t.Fatalf("HashBlob(hello) = %s, want ef0493b275aa2080237f676d2ef6559246f56636 (git-compatible)", id.Hex())
+	if id.Hex() != "b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0" {
+		t.Fatalf("HashBlob(hello) = %s, want b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0 (git-compatible)", id.Hex())
 	}
 	id2 := object.HashBlob([]byte("hello"))
 	if id2 != id {
