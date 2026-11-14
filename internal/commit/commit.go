@@ -33,6 +33,7 @@ type Commit struct {
 func Parse(id sha1.Digest, data []byte) (*Commit, error) {
 	_ = id // The caller's object store is responsible for verifying the object ID.
 	c := &Commit{raw: append([]byte(nil), data...)}
+	hasTree := false
 	headerEnd := bytes.Index(data, []byte{'\\n', '\\n'})
 	var header, message []byte
 	if headerEnd < 0 {
@@ -57,6 +58,7 @@ func Parse(id sha1.Digest, data []byte) (*Commit, error) {
 				return nil, fmt.Errorf("commit: invalid tree ID %q: %w", value, err)
 			}
 			c.Tree = d
+			hasTree = true
 		case "parent":
 			d, err := sha1.FromHex(value)
 			if err != nil {
@@ -69,8 +71,8 @@ func Parse(id sha1.Digest, data []byte) (*Commit, error) {
 			c.Committer, c.CommitterTS, c.CommitterTZ = parseIdentity(value)
 		}
 	}
-	if c.Tree == sha1.Zero {
-		return nil, fmt.Errorf("commit: missing or zero tree ID")
+	if !hasTree {
+		return nil, fmt.Errorf("commit: missing tree header")
 	}
 	if headerEnd >= 0 {
 		c.Message = string(message)
