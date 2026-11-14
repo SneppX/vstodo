@@ -154,6 +154,12 @@ func ensureIndexFromHEAD(a *app.App) error {
 	if len(a.Index.Entries()) != 0 {
 		return nil
 	}
+	marker := a.Repo.GitPath("index.snapshot-v1")
+	if _, err := os.Stat(marker); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	headID, err := currentCommitID(a)
 	if err != nil || headID == sha1.Zero {
 		return nil
