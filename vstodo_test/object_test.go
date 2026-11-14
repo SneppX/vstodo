@@ -99,12 +99,18 @@ func TestObjectCompressDecompress(t *testing.T) {
 	}
 }
 
-func TestObjectMarshalUnmarshalRoundTripStore(t *testing.T) {
+func TestObjectMarshalUnmarshalRoundTrip(t *testing.T) {
 	blob := &object.Object{Type: object.BlobType, Data: []byte("round-trip blob data")}
-	id, err := object.ComputeID(blob.Type, blob.Data), error(nil)
-	_ = id
-	if _, err := object.ComputeID(blob.Type, blob.Data), error(nil); err != nil {
-		t.Fatalf("ComputeID: %v", err)
+	raw := object.Marshal(blob.Type, blob.Data)
+	typ, data, err := object.Unmarshal(raw)
+	if err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if typ != blob.Type {
+		t.Fatalf("type = %s, want %s", typ, blob.Type)
+	}
+	if !bytes.Equal(data, blob.Data) {
+		t.Fatalf("data = %q, want %q", data, blob.Data)
 	}
 }
 

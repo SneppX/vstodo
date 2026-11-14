@@ -17,6 +17,14 @@ func main() {
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
+	if cmd == "demo" {
+		if err := cmdDemo(args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if cmd == "init" {
 		if err := cmdInit(args); err != nil {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
@@ -179,6 +187,7 @@ func printUsage() {
 Usage: vstodo <command> [options] [args]
 
 Core commands:
+  demo         Create a sample repository demonstrating VSTodo features
   clone        Clone a repository into a new directory
   init         Initialize a new vstodo repository
   add          Add file contents to the staging index
