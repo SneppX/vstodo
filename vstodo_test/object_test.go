@@ -3,6 +3,7 @@ package vstodo_test
 import (
 	"bytes"
 	"testing"
+	"strings"
 
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
@@ -138,6 +139,35 @@ func TestCommitBuildParse(t *testing.T) {
 	id := object.HashCommit(cb)
 	if id == sha1.Zero {
 		t.Fatalf("commit ID is zero")
+	}
+}
+
+
+func TestCommitBuildUsesGitIdentityMetadata(t *testing.T) {
+	treeID := sha1.Digest{1}
+	raw := commit.Build(treeID, nil, "Alice <alice@example.com>", "Bob <bob@example.com>", "metadata test")
+	text := string(raw)
+	if !strings.Contains(text, "author Alice <alice@example.com> ") {
+		t.Fatalf("author header is not Git-compatible: %q", text)
+	}
+	if strings.Contains(text, "Alice <alice@example.com> <Alice") {
+		t.Fatalf("author identity was wrapped twice: %q", text)
+	}
+	parsed, err := commit.Parse(sha1.Zero, raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if parsed.Author != "Alice <alice@example.com>" || parsed.Committer != "Bob <bob@example.com>" {
+		t.Fatalf("parsed identities = %q / %q", parsed.Author, parsed.Committer)
+	}
+	if parsed.AuthorTS <= 0 || parsed.CommitterTS <= 0 {
+		t.Fatalf("timestamps were not parsed: author=%d committer=%d", parsed.AuthorTS, parsed.CommitterTS)
+	}
+	if len(parsed.AuthorTZ) != 5 || len(parsed.CommitterTZ) != 5 {
+		t.Fatalf("timezones were not parsed: author=%q committer=%q", parsed.AuthorTZ, parsed.CommitterTZ)
+	}
+	if !bytes.Equal(raw, parsed.Marshal()) {
+		t.Fatal("parsed commit did not preserve its original bytes")
 	}
 }
 
