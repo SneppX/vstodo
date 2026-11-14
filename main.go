@@ -19,7 +19,7 @@ func main() {
 
 	if cmd == "demo" {
 		if err := cmdDemo(args); err != nil {
-			fmt.Fprintf(os.Stderr, "vstodo: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
 		return

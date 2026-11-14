@@ -1,4 +1,4 @@
-package vstodo_test
+package main
 
 import (
 	"bytes"

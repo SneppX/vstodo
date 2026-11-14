@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"vstodo/internal/app"
+	"vstodo/internal/commit"
 	"vstodo/internal/index"
 	"vstodo/internal/object"
 	"vstodo/internal/sha1"
