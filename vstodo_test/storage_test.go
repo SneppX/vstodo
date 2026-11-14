@@ -103,3 +103,24 @@ func TestStorageConcurrentIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestStorageRejectsObjectWithMismatchedContentHash(t *testing.T) {
+	dir := t.TempDir()
+	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
+	id, err := store.Store(&object.Object{Type: object.BlobType, Data: []byte("original")})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	corrupt, err := object.Compress(object.BlobType, []byte("tampered"))
+	if err != nil {
+		t.Fatalf("Compress: %v", err)
+	}
+	if err := store.StoreRaw(id, corrupt); err != nil {
+		t.Fatalf("StoreRaw: %v", err)
+	}
+	if _, err := store.Load(id); err == nil {
+		t.Fatal("Load succeeded for an object whose content does not match its object ID")
+	}
+}
+
