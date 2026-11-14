@@ -16,7 +16,11 @@ func cmdAdd(a *app.App, args []string) error {
 	}
 	for _, rel := range args {
 		rel = filepath.ToSlash(rel)
-		data, err := os.ReadFile(a.Repo.Path(rel))
+		fullPath, err := worktreePath(a, rel)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(fullPath)
 		if err != nil {
 			return err
 		}
