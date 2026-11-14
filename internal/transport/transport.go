@@ -167,7 +167,7 @@ func objectTreeID(a *app.App, commitData []byte) (sha1.Digest, error) {
 	// parse "tree <hex>" from commit header.
 	idx := -1
 	for i := 0; i+4 < len(commitData); i++ {
-		if commitData[i] == 't' && commitData[i+1] == 'r' && commitData[i+2] == 'e' && commitData[i+3] == ' ' {
+		if commitData[i] == 't' && commitData[i+1] == 'r' && commitData[i+2] == 'e' && commitData[i+3] == 'e' && commitData[i+4] == ' ' {
 			idx = i
 			break
 		}

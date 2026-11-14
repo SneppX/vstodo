@@ -140,7 +140,13 @@ func (s *LooseStore) StoreRaw(id sha1.Digest, compressed []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, compressed, 0o444)
+	if err := os.Chmod(path, 0o644); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.WriteFile(path, compressed, 0o644); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o444)
 }
 
 // WriteRaw stores raw payload as type and returns digest.
