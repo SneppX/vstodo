@@ -2,8 +2,8 @@ package vstodo_test
 
 import (
 	"bytes"
-	"testing"
 	"strings"
+	"testing"
 
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
