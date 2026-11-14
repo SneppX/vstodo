@@ -2,131 +2,133 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
-	"vstodo/internal/index"
 	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 )
 
-// cmdCherryPick applies the changes introduced by existing commits.
+// cmdCherryPick applies a single-parent commit using the same three-way
+// machinery as merge, so conflicts are detected before repository state moves.
 func cmdCherryPick(a *app.App, args []string) error {
-	if len(args) < 1 {
+	if len(args) != 1 {
 		return fmt.Errorf("usage: vstodo cherry-pick <commit>")
 	}
-	id, err := resolveCommitish(a, args[0])
+	pickID, err := resolveCommitish(a, args[0])
 	if err != nil {
 		return err
+	}
+	pickObj, err := a.Store.Load(pickID)
+	if err != nil {
+		return err
+	}
+	if pickObj.Type != object.CommitType {
+		return fmt.Errorf("cherry-pick: target is not a commit")
+	}
+	pickCommit, err := commit.Parse(pickID, pickObj.Data)
+	if err != nil {
+		return err
+	}
+	if len(pickCommit.Parents) != 1 {
+		return fmt.Errorf("cherry-pick: merge commits and root commits are not supported; target must have exactly one parent")
 	}
 
-	obj, err := a.Store.Load(id)
-	if err != nil {
-		return err
-	}
-	c, err := commit.Parse(id, obj.Data)
-	if err != nil {
-		return err
-	}
-
-	if len(c.Parents) == 0 {
-		return fmt.Errorf("cannot cherry-pick root commit %s", id.Hex()[:7])
-	}
-	parentID := c.Parents[0]
-
-	// Compute the diff between parent and this commit.
-	parentTreeID, err := commitTreeID(a, parentID)
-	if err != nil {
-		return err
-	}
-	parentTree, err := treeToMap(a, parentTreeID, "")
-	if err != nil {
-		return err
-	}
-	commitTree, err := treeToMap(a, c.Tree, "")
-	if err != nil {
-		return err
-	}
-
-	// Apply changes to the working tree and index: for each path in commitTree,
-	// write the blob content; for paths removed, delete.
-	for path, bid := range commitTree {
-		if parentTree[path] != bid {
-			if bid == sha1.Zero {
-				_ = removeFile(a, path)
-				a.Index.Remove(path)
-				continue
-			}
-			data, err := readBlob(a, bid)
-			if err != nil {
-				return err
-			}
-			if err := writeFile(a, path, data); err != nil {
-				return err
-			}
-			a.Index.Add(path, bid)
-		}
-	}
-	for path := range parentTree {
-		if _, ok := commitTree[path]; !ok {
-			_ = removeFile(a, path)
-			a.Index.Remove(path)
-		}
-	}
-	if err := a.SaveIndex(); err != nil {
-		return err
-	}
-
-	// Create a commit with the cherry-picked changes.
 	headID, err := currentCommitID(a)
 	if err != nil || headID == sha1.Zero {
-		headID = sha1.Zero
-	}
-	parents := []sha1.Digest{}
-	if headID != sha1.Zero {
-		parents = append(parents, headID)
-	}
-	newTreeID, err := buildTreeFromIndex(a, a.Index.Entries(), "")
-	if err != nil {
-		return err
-	}
-	cb := commit.Build(newTreeID, parents, "vstodo", "vstodo", "Cherry-pick: "+c.Message)
-	newID := object.HashCommit(cb)
-	if _, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: cb}); err != nil {
-		return err
+		return fmt.Errorf("cherry-pick: no current commit")
 	}
 	branch, err := a.Refs.CurrentBranch()
 	if err != nil || branch == "" {
-		branch = "main"
+		return fmt.Errorf("cherry-pick: cannot apply while HEAD is detached")
+	}
+	headObj, err := a.Store.Load(headID)
+	if err != nil {
+		return err
+	}
+	if headObj.Type != object.CommitType {
+		return fmt.Errorf("cherry-pick: current HEAD is not a commit")
+	}
+	headCommit, err := commit.Parse(headID, headObj.Data)
+	if err != nil {
+		return err
+	}
+	if err := requireCleanWorkingTree(a, headCommit.Tree); err != nil {
+		return fmt.Errorf("cherry-pick: %w", err)
+	}
+
+	parentID := pickCommit.Parents[0]
+	parentObj, err := a.Store.Load(parentID)
+	if err != nil {
+		return err
+	}
+	if parentObj.Type != object.CommitType {
+		return fmt.Errorf("cherry-pick: parent is not a commit")
+	}
+	parentCommit, err := commit.Parse(parentID, parentObj.Data)
+	if err != nil {
+		return err
+	}
+	baseTree, err := treeToMap(a, parentCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+	oursTree, err := treeToMap(a, headCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+	pickTree, err := treeToMap(a, pickCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+
+	mergedTree, mergedContents, conflicts, err := mergeTrees(a, baseTree, oursTree, pickTree)
+	if err != nil {
+		return err
+	}
+	if len(conflicts) > 0 {
+		return fmt.Errorf("cherry-pick conflicts in %s; no files or refs were changed", strings.Join(conflicts, ", "))
+	}
+	for path, data := range mergedContents {
+		id, err := a.Store.WriteRaw(object.BlobType, data)
+		if err != nil {
+			return fmt.Errorf("cherry-pick: store merged blob %s: %w", path, err)
+		}
+		mergedTree[path] = id
+	}
+	if sameTreeSnapshot(oursTree, mergedTree) {
+		fmt.Println("The cherry-pick is empty; no changes applied.")
+		return nil
+	}
+	treeID, err := buildTreeFromIndex(a, mergedTree, "")
+	if err != nil {
+		return err
+	}
+	message := "Cherry-pick: " + pickCommit.Message
+	commitData := commit.Build(treeID, []sha1.Digest{headID}, "vstodo", "vstodo", message)
+	newID := object.HashCommit(commitData)
+	if _, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: commitData}); err != nil {
+		return err
+	}
+	if err := applyMergedTree(a, oursTree, mergedTree); err != nil {
+		return err
 	}
 	if err := a.Refs.WriteRef("refs/heads/"+branch, newID); err != nil {
 		return err
 	}
-	if err := a.Refs.SetHead("ref: refs/heads/" + branch); err != nil {
-		return err
-	}
-	a.Index = index.NewIndex(a.Repo.GitPath("index"))
-	if err := a.SaveIndex(); err != nil {
-		return err
-	}
-
-	fmt.Printf("[%s %s] Cherry-pick: %s\n", branch, newID.Hex()[:7], c.Message)
+	fmt.Printf("[%s %s] %s\n", branch, newID.Hex()[:7], message)
 	return nil
 }
 
-func commitTreeID(a *app.App, id sha1.Digest) (sha1.Digest, error) {
-	obj, err := a.Store.Load(id)
-	if err != nil {
-		return sha1.Zero, err
+func sameTreeSnapshot(a, b map[string]sha1.Digest) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	c, err := commit.Parse(id, obj.Data)
-	if err != nil {
-		return sha1.Zero, err
+	for path, id := range a {
+		if b[path] != id {
+			return false
+		}
 	}
-	return c.Tree, nil
+	return true
 }
-
-var _ = sort.Strings
-var _ = strings.Join
