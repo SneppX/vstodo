@@ -48,14 +48,14 @@ func makeMergeFixture(t *testing.T, baseFiles, oursFiles, theirsFiles map[string
 
 func TestMergeCombinesChangesAcrossFiles(t *testing.T) {
 	a, root, oursID, theirsID := makeMergeFixture(t,
-		map[string]string{"left.txt":"base left\n","right.txt":"base right\n"},
-		map[string]string{"left.txt":"ours left\n","right.txt":"base right\n"},
-		map[string]string{"left.txt":"base left\n","right.txt":"theirs right\n"},
+		map[string]string{"left.txt": "base left\n","right.txt": "base right\n"},
+		map[string]string{"left.txt": "ours left\n","right.txt": "base right\n"},
+		map[string]string{"left.txt": "base left\n","right.txt": "theirs right\n"},
 	)
 	if err := cmdMerge(a, []string{"feature"}); err != nil {
 		t.Fatalf("merge: %v", err)
 	}
-	for path, want := range map[string]string{"left.txt":"ours left\n","right.txt":"theirs right\n"} {
+	for path, want := range map[string]string{"left.txt": "ours left\n","right.txt": "theirs right\n"} {
 		data, err := os.ReadFile(filepath.Join(root, path))
 		if err != nil || string(data) != want {
 			t.Fatalf("%s = %q, err=%v; want %q", path, data, err, want)
@@ -80,9 +80,9 @@ func TestMergeCombinesChangesAcrossFiles(t *testing.T) {
 
 func TestMergeCombinesNonOverlappingEditsInOneFile(t *testing.T) {
 	a, root, _, _ := makeMergeFixture(t,
-		map[string]string{"file.txt":"one\ntwo\nthree\n"},
-		map[string]string{"file.txt":"ONE\ntwo\nthree\n"},
-		map[string]string{"file.txt":"one\ntwo\nTHREE\n"},
+		map[string]string{"file.txt": "one\ntwo\nthree\n"},
+		map[string]string{"file.txt": "ONE\ntwo\nthree\n"},
+		map[string]string{"file.txt": "one\ntwo\nTHREE\n"},
 	)
 	if err := cmdMerge(a, []string{"feature"}); err != nil {
 		t.Fatalf("merge: %v", err)
@@ -98,9 +98,9 @@ func TestMergeCombinesNonOverlappingEditsInOneFile(t *testing.T) {
 
 func TestMergeConflictLeavesRepositoryUnchanged(t *testing.T) {
 	a, root, oursID, _ := makeMergeFixture(t,
-		map[string]string{"file.txt":"base\nsecond\n"},
-		map[string]string{"file.txt":"ours\nsecond\n"},
-		map[string]string{"file.txt":"theirs\nsecond\n"},
+		map[string]string{"file.txt": "base\nsecond\n"},
+		map[string]string{"file.txt": "ours\nsecond\n"},
+		map[string]string{"file.txt": "theirs\nsecond\n"},
 	)
 	if err := cmdMerge(a, []string{"feature"}); err == nil {
 		t.Fatal("merge unexpectedly accepted overlapping edits")
