@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestBranchCreatesFromStartPoint(t *testing.T) {
-	a, _, _, targetID, _ := makeMergeFixture(t,
+	a, _, _, targetID := makeMergeFixture(t,
 		map[string]string{"base.txt": "base\n"},
 		map[string]string{"ours.txt": "ours\n"},
 		map[string]string{"theirs.txt": "theirs\n"},
@@ -18,7 +18,7 @@ func TestBranchCreatesFromStartPoint(t *testing.T) {
 }
 
 func TestBranchSafeDeleteAndForceDelete(t *testing.T) {
-	a, _, _, _, _ := makeMergeFixture(t,
+	a, _, _, _ := makeMergeFixture(t,
 		map[string]string{"base.txt": "base\n"},
 		map[string]string{"ours.txt": "ours\n"},
 		map[string]string{"theirs.txt": "theirs\n"},
@@ -35,7 +35,7 @@ func TestBranchSafeDeleteAndForceDelete(t *testing.T) {
 }
 
 func TestBranchRenameUpdatesCurrentHead(t *testing.T) {
-	a, _, _, mainID, _ := makeMergeFixture(t,
+	a, _, mainID, _ := makeMergeFixture(t,
 		map[string]string{"base.txt": "base\n"},
 		map[string]string{"ours.txt": "ours\n"},
 		map[string]string{"theirs.txt": "theirs\n"},
