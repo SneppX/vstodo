@@ -138,12 +138,18 @@ func isCommitAncestor(a *app.App, ancestor, descendant sha1.Digest) (bool, error
 }
 
 func requireCleanWorkingTree(a *app.App, headTree sha1.Digest) error {
-	if len(a.Index.Entries()) != 0 {
-		return fmt.Errorf("merge: staged changes present; commit or unstage them first")
-	}
 	tracked, err := treeToMap(a, headTree, "")
 	if err != nil {
 		return err
+	}
+	staged := a.Index.Entries()
+	if len(staged) != len(tracked) {
+		return fmt.Errorf("merge: staged changes present; commit or unstage them first")
+	}
+	for path, id := range tracked {
+		if staged[path] != id {
+			return fmt.Errorf("merge: staged changes present; commit or unstage them first")
+		}
 	}
 	files, err := walkFiles(a.Repo.Root)
 	if err != nil {
