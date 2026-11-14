@@ -58,7 +58,7 @@ func walkFiles(root string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if strings.HasPrefix(rel, ".vstodo"+string(filepath.Separator)) || rel == ".vstodo" {
+		if strings.HasPrefix(rel, ".vstodo"+string(filepath.Separator)) || rel == ".vstodo" || strings.HasPrefix(rel, ".git"+string(filepath.Separator)) || rel == ".git" {
 			return nil
 		}
 		out = append(out, rel)
@@ -147,9 +147,35 @@ func currentCommitID(a *app.App) (sha1.Digest, error) {
 	return a.Refs.Head()
 }
 
-// writeFile ensures parent dirs exist and writes data.
+// worktreePath resolves a repository-relative path and rejects traversal or
+// absolute paths. Tree objects and command arguments must never escape the
+// working tree when used for filesystem operations.
+func worktreePath(a *app.App, rel string) (string, error) {
+	if rel == "" || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("invalid working-tree path %q", rel)
+	}
+	clean := filepath.Clean(filepath.FromSlash(rel))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("working-tree path escapes repository: %q", rel)
+	}
+	root, err := filepath.Abs(a.Repo.Root)
+	if err != nil {
+		return "", err
+	}
+	full := filepath.Join(root, clean)
+	resolved, err := filepath.Rel(root, full)
+	if err != nil || resolved == ".." || strings.HasPrefix(resolved, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("working-tree path escapes repository: %q", rel)
+	}
+	return full, nil
+}
+
+// writeFile ensures parent dirs exist and writes data inside the working tree.
 func writeFile(a *app.App, rel string, data []byte) error {
-	full := a.Repo.Path(rel)
+	full, err := worktreePath(a, rel)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return err
 	}
@@ -158,7 +184,10 @@ func writeFile(a *app.App, rel string, data []byte) error {
 
 // removeFile deletes a working-tree file if present.
 func removeFile(a *app.App, rel string) error {
-	full := a.Repo.Path(rel)
+	full, err := worktreePath(a, rel)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
 		return err
 	}
