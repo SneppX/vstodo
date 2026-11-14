@@ -3,7 +3,6 @@ package main
 import (
 	"testing"
 
-	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 )
 
