@@ -59,7 +59,8 @@ func walkFiles(root string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if strings.HasPrefix(rel, ".vstodo"+string(filepath.Separator)) || rel == ".vstodo" || strings.HasPrefix(rel, ".git"+string(filepath.Separator)) || rel == ".git" {
+		rel = filepath.ToSlash(rel)
+		if strings.HasPrefix(rel, ".vstodo/") || rel == ".vstodo" || strings.HasPrefix(rel, ".git/") || rel == ".git" {
 			return nil
 		}
 		out = append(out, rel)
@@ -81,7 +82,7 @@ func buildTreeFromIndex(a *app.App, entries map[string]sha1.Digest, prefix strin
 	for path, id := range entries {
 		rel := strings.TrimPrefix(path, prefix)
 		rel = strings.TrimLeft(rel, "/")
-		parts := strings.SplitN(rel, string(filepath.Separator), 2)
+		parts := strings.SplitN(rel, "/", 2)
 		name := parts[0]
 		if len(parts) == 1 {
 			tops = append(tops, dirEntry{mode: "100644", name: name, id: id})
@@ -98,7 +99,7 @@ func buildTreeFromIndex(a *app.App, entries map[string]sha1.Digest, prefix strin
 		te = append(te, tree.Entry{Mode: t.mode, Name: t.name, ID: t.id})
 	}
 	for sub, subents := range subdirs {
-		subID, err := buildTreeFromIndex(a, subents, prefix+sub+string(filepath.Separator))
+		subID, err := buildTreeFromIndex(a, subents, prefix+sub+"/")
 		if err != nil {
 			return sha1.Zero, err
 		}
@@ -129,7 +130,7 @@ func treeToMap(a *app.App, id sha1.Digest, prefix string) (map[string]sha1.Diges
 	for _, e := range t.Entries {
 		p := prefix + e.Name
 		if e.Mode == "040000" {
-			sub, err := treeToMap(a, e.ID, p+string(filepath.Separator))
+			sub, err := treeToMap(a, e.ID, p+"/")
 			if err != nil {
 				return nil, err
 			}
