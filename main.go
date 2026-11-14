@@ -158,6 +158,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
+	case "config":
+		if err := cmdConfig(a, args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
+			os.Exit(1)
+		}
 	case "gc":
 		if err := cmdGC(a, args); err != nil {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
@@ -190,6 +195,7 @@ Core commands:
   demo         Create a sample repository demonstrating VSTodo features
   clone        Clone a repository into a new directory
   init         Initialize a new vstodo repository
+  config       Get and set repository configuration
   add          Add file contents to the staging index
   commit       Record changes to the repository
   status       Show the working tree status
