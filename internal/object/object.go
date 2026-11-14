@@ -7,8 +7,8 @@ import (
 	"compress/zlib"
 	"fmt"
 	"io"
-	"strings"
 	"strconv"
+	"strings"
 
 	"vstodo/internal/sha1"
 )

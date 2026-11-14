@@ -52,5 +52,5 @@ func (a *App) SaveIndex() error {
 	if err := a.Index.Save(); err != nil {
 		return err
 	}
-	return os.WriteFile(a.Repo.GitPath("index.snapshot-v1"), []byte("1\\n"), 0o644)
+	return os.WriteFile(a.Repo.GitPath("index.snapshot-v1"), []byte("1\n"), 0o644)
 }

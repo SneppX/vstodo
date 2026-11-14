@@ -67,7 +67,6 @@ func TestObjectUnmarshalErrors(t *testing.T) {
 	}
 }
 
-
 func TestObjectUnmarshalRejectsIncorrectPayloadSize(t *testing.T) {
 	cases := []string{
 		"blob 4\x00abc",
@@ -141,7 +140,6 @@ func TestCommitBuildParse(t *testing.T) {
 		t.Fatalf("commit ID is zero")
 	}
 }
-
 
 func TestCommitBuildUsesGitIdentityMetadata(t *testing.T) {
 	treeID := sha1.Digest{1}
