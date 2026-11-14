@@ -66,6 +66,21 @@ func TestObjectUnmarshalErrors(t *testing.T) {
 	}
 }
 
+
+func TestObjectUnmarshalRejectsIncorrectPayloadSize(t *testing.T) {
+	cases := []string{
+		"blob 4\\x00abc",
+		"blob 2\\x00abc",
+		"blob nope\\x00abc",
+		"blob -1\\x00abc",
+	}
+	for _, raw := range cases {
+		if _, _, err := object.Unmarshal([]byte(raw)); err == nil {
+			t.Errorf("Unmarshal(%q) unexpectedly succeeded", raw)
+		}
+	}
+}
+
 func TestObjectCompressDecompress(t *testing.T) {
 	data := bytes.Repeat([]byte("x"), 10000)
 	comp, err := object.Compress(object.BlobType, data)
