@@ -144,23 +144,28 @@ func isCommitAncestor(a *app.App, ancestor, descendant sha1.Digest) (bool, error
 }
 
 func requireCleanWorkingTree(a *app.App, headTree sha1.Digest) error {
-	tracked, err := treeToMap(a, headTree, "")
-	if err != nil {
+	if err := ensureIndexFromHEAD(a); err != nil {
 		return err
 	}
-	staged := a.Index.Entries()
-	// An empty index is the legacy state written by older VSTodo releases.
-	// Non-empty indexes must exactly match HEAD before a merge is safe.
-	if len(staged) != 0 {
-		if len(staged) != len(tracked) {
-			return fmt.Errorf("merge: staged changes present; commit or unstage them first")
-		}
-		for path, id := range tracked {
-			if staged[path] != id {
-				return fmt.Errorf("merge: staged changes present; commit or unstage them first")
-			}
+	tracked := make(map[string]sha1.Digest)
+	if headTree != sha1.Zero {
+		var err error
+		tracked, err = treeToMap(a, headTree, "")
+		if err != nil {
+			return err
 		}
 	}
+
+	staged := a.Index.Entries()
+	if len(staged) != len(tracked) {
+		return fmt.Errorf("staged changes are present; commit or unstage them first")
+	}
+	for path, id := range tracked {
+		if staged[path] != id {
+			return fmt.Errorf("staged changes are present; commit or unstage them first")
+		}
+	}
+
 	files, err := walkFiles(a.Repo.Root)
 	if err != nil {
 		return err
@@ -169,7 +174,7 @@ func requireCleanWorkingTree(a *app.App, headTree sha1.Digest) error {
 	for _, path := range files {
 		id, exists := tracked[path]
 		if !exists {
-			return fmt.Errorf("merge: untracked file %q would be at risk; move or remove it first", path)
+			return fmt.Errorf("untracked file %q would be at risk; move or remove it first", path)
 		}
 		fullPath, err := worktreePath(a, path)
 		if err != nil {
@@ -180,13 +185,13 @@ func requireCleanWorkingTree(a *app.App, headTree sha1.Digest) error {
 			return err
 		}
 		if object.HashBlob(data) != id {
-			return fmt.Errorf("merge: local changes in %q; commit or restore them first", path)
+			return fmt.Errorf("local changes in %q; commit or restore them first", path)
 		}
 		seen[path] = true
 	}
 	for path := range tracked {
 		if !seen[path] {
-			return fmt.Errorf("merge: tracked file %q is missing; restore it first", path)
+			return fmt.Errorf("tracked file %q is missing; restore it first", path)
 		}
 	}
 	return nil
