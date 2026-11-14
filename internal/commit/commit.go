@@ -34,7 +34,7 @@ func Parse(id sha1.Digest, data []byte) (*Commit, error) {
 	_ = id // The caller's object store is responsible for verifying the object ID.
 	c := &Commit{raw: append([]byte(nil), data...)}
 	hasTree := false
-	headerEnd := bytes.Index(data, []byte{'\\n', '\\n'})
+	headerEnd := bytes.Index(data, []byte{'\n', '\n'})
 	var header, message []byte
 	if headerEnd < 0 {
 		header = data
@@ -42,7 +42,7 @@ func Parse(id sha1.Digest, data []byte) (*Commit, error) {
 		header = data[:headerEnd]
 		message = data[headerEnd+2:]
 	}
-	for _, line := range bytes.Split(header, []byte{'\\n'}) {
+	for _, line := range bytes.Split(header, []byte{'\n'}) {
 		if len(line) == 0 || line[0] == ' ' {
 			continue
 		}
@@ -75,7 +75,7 @@ func Parse(id sha1.Digest, data []byte) (*Commit, error) {
 		return nil, fmt.Errorf("commit: missing tree header")
 	}
 	if headerEnd >= 0 {
-		c.Message = strings.TrimRight(string(message), "\\n")
+		c.Message = strings.TrimRight(string(message), "\n")
 	}
 	return c, nil
 }
@@ -109,22 +109,22 @@ func (c *Commit) Marshal() []byte {
 	var buf bytes.Buffer
 	buf.WriteString("tree ")
 	buf.WriteString(c.Tree.Hex())
-	buf.WriteByte('\\n')
+	buf.WriteByte('\n')
 	for _, parent := range c.Parents {
 		buf.WriteString("parent ")
 		buf.WriteString(parent.Hex())
-		buf.WriteByte('\\n')
+		buf.WriteByte('\n')
 	}
 	buf.WriteString("author ")
 	buf.WriteString(formatIdentity(c.Author, c.AuthorTS, c.AuthorTZ))
-	buf.WriteByte('\\n')
+	buf.WriteByte('\n')
 	buf.WriteString("committer ")
 	buf.WriteString(formatIdentity(c.Committer, c.CommitterTS, c.CommitterTZ))
-	buf.WriteByte('\\n')
-	buf.WriteByte('\\n')
+	buf.WriteByte('\n')
+	buf.WriteByte('\n')
 	buf.WriteString(c.Message)
-	if !strings.HasSuffix(c.Message, "\\n") {
-		buf.WriteByte('\\n')
+	if !strings.HasSuffix(c.Message, "\n") {
+		buf.WriteByte('\n')
 	}
 	return buf.Bytes()
 }
