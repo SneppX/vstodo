@@ -13,7 +13,6 @@ import (
 	"vstodo/internal/sha1"
 )
 
-// cmdStash stashes changes in a dirty working tree away.
 func cmdStash(a *app.App, args []string) error {
 	if len(args) == 0 {
 		args = []string{"push"}
@@ -23,6 +22,12 @@ func cmdStash(a *app.App, args []string) error {
 		return stashPush(a, args[1:])
 	case "pop":
 		return stashPop(a, args[1:])
+	case "apply":
+		id := resolveStashRef(a, args[1:])
+		if id == sha1.Zero {
+			return fmt.Errorf("no stash to apply")
+		}
+		return stashApply(a, id)
 	case "list":
 		return stashList(a)
 	case "show":
@@ -38,10 +43,17 @@ func cmdStash(a *app.App, args []string) error {
 
 func stashPush(a *app.App, args []string) error {
 	msg := "WIP on stash"
-	for i, arg := range args {
-		if arg == "-m" && i+1 < len(args) {
-			msg = args[i+1]
-			break
+	includeUntracked := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-m", "--message":
+			if i+1 >= len(args) {
+				return fmt.Errorf("stash push: -m requires a message")
+			}
+			i++
+			msg = args[i]
+		case "-u", "--include-untracked":
+			includeUntracked = true
 		}
 	}
 
@@ -49,71 +61,86 @@ func stashPush(a *app.App, args []string) error {
 	if err != nil || headID == sha1.Zero {
 		return fmt.Errorf("cannot stash: no commits")
 	}
+	if err := ensureIndexFromHEAD(a); err != nil {
+		return err
+	}
+	headObj, err := a.Store.Load(headID)
+	if err != nil {
+		return err
+	}
+	headCommit, err := commit.Parse(headID, headObj.Data)
+	if err != nil {
+		return err
+	}
+	headTree, err := treeToMap(a, headCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+	indexTree := a.Index.Entries()
+	managed := make(map[string]bool, len(headTree)+len(indexTree))
+	for path := range headTree {
+		managed[path] = true
+	}
+	for path := range indexTree {
+		managed[path] = true
+	}
 
-	// Capture working tree state: every tracked file's current on-disk content.
-	indexMap := a.Index.Entries()
 	workTree := make(map[string]sha1.Digest)
-	for path := range indexMap {
-		data, err := os.ReadFile(a.Repo.Path(path))
+	files, err := walkFiles(a.Repo.Root)
+	if err != nil {
+		return err
+	}
+	for _, path := range files {
+		if !managed[path] && !includeUntracked {
+			continue
+		}
+		full, err := worktreePath(a, path)
 		if err != nil {
-			if os.IsNotExist(err) {
-				workTree[path] = sha1.Zero
-				continue
-			}
 			return err
 		}
-		id := object.HashBlob(data)
-		if _, err := a.Store.Store(&object.Object{Type: object.BlobType, Data: data}); err != nil {
+		data, err := os.ReadFile(full)
+		if err != nil {
+			return err
+		}
+		id, err := a.Store.WriteRaw(object.BlobType, data)
+		if err != nil {
 			return err
 		}
 		workTree[path] = id
 	}
+	if sameTreeSnapshot(headTree, workTree) && sameTreeSnapshot(headTree, indexTree) {
+		return fmt.Errorf("no local changes to stash")
+	}
 
-	// Build tree from working tree.
-	treeID, err := buildTreeFromIndex(a, workTree, "")
+	indexTreeID, err := buildTreeFromIndex(a, indexTree, "")
 	if err != nil {
 		return err
 	}
-
-	parents := []sha1.Digest{headID}
-	cb := commit.Build(treeID, parents, "vstodo", "vstodo", msg)
-	stashID := object.HashCommit(cb)
-	if _, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: cb}); err != nil {
+	indexCommitData := commit.Build(indexTreeID, []sha1.Digest{headID}, "vstodo", "vstodo", "index state for stash")
+	indexCommitID, err := a.Store.WriteRaw(object.CommitType, indexCommitData)
+	if err != nil {
 		return err
 	}
-
-	// Append to refs/stash as a reflog-like stack (store as refs/stash with
-	// the newest commit; keep a simple list file for history).
-	stashPath := filepath.Join(a.Repo.GitDir, "refs", "stash")
-	if err := os.MkdirAll(filepath.Dir(stashPath), 0o755); err != nil {
+	workTreeID, err := buildTreeFromIndex(a, workTree, "")
+	if err != nil {
 		return err
 	}
-	// Read existing stash log.
-	var entries []string
-	if b, err := os.ReadFile(stashPath); err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			if strings.TrimSpace(line) != "" {
-				entries = append(entries, line)
-			}
-		}
-	}
-	entries = append([]string{stashID.Hex()}, entries...)
-	var buf strings.Builder
-	for i, e := range entries {
-		if i > 0 {
-			buf.WriteByte('\n')
-		}
-		buf.WriteString(e)
-	}
-	buf.WriteByte('\n')
-	if err := os.WriteFile(stashPath, []byte(buf.String()), 0o644); err != nil {
+	stashData := commit.Build(workTreeID, []sha1.Digest{headID, indexCommitID}, "vstodo", "vstodo", msg)
+	stashID, err := a.Store.WriteRaw(object.CommitType, stashData)
+	if err != nil {
 		return err
 	}
-	// Also write refs/stash to the latest commit id for ref compatibility.
+	if err := appendStashLog(a, stashID); err != nil {
+		return err
+	}
 	if err := a.Refs.WriteRef("refs/stash", stashID); err != nil {
 		return err
 	}
 
+	// Reset tracked and optionally included untracked files to the original HEAD.
+	if err := applyMergedTree(a, workTree, headTree); err != nil {
+		return fmt.Errorf("stash saved as %s but worktree reset failed: %w", stashID.Hex()[:7], err)
+	}
 	fmt.Printf("Saved working directory and index state %s: %s\n", stashID.Hex()[:7], msg)
 	return nil
 }
@@ -130,6 +157,177 @@ func stashPop(a *app.App, args []string) error {
 }
 
 func stashApply(a *app.App, id sha1.Digest) error {
+	stashObj, err := a.Store.Load(id)
+	if err != nil {
+		return err
+	}
+	if stashObj.Type != object.CommitType {
+		return fmt.Errorf("stash: target is not a commit")
+	}
+	stashCommit, err := commit.Parse(id, stashObj.Data)
+	if err != nil {
+		return err
+	}
+	if len(stashCommit.Parents) < 2 {
+		return fmt.Errorf("stash: legacy stash without index state is not supported")
+	}
+
+	headID, err := currentCommitID(a)
+	if err != nil || headID == sha1.Zero {
+		return fmt.Errorf("stash apply: no current commit")
+	}
+	headObj, err := a.Store.Load(headID)
+	if err != nil {
+		return err
+	}
+	headCommit, err := commit.Parse(headID, headObj.Data)
+	if err != nil {
+		return err
+	}
+	if err := requireCleanWorkingTree(a, headCommit.Tree); err != nil {
+		return fmt.Errorf("stash apply: %w", err)
+	}
+
+	baseObj, err := a.Store.Load(stashCommit.Parents[0])
+	if err != nil {
+		return err
+	}
+	baseCommit, err := commit.Parse(stashCommit.Parents[0], baseObj.Data)
+	if err != nil {
+		return err
+	}
+	indexObj, err := a.Store.Load(stashCommit.Parents[1])
+	if err != nil {
+		return err
+	}
+	indexCommit, err := commit.Parse(stashCommit.Parents[1], indexObj.Data)
+	if err != nil {
+		return err
+	}
+	baseTree, err := treeToMap(a, baseCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+	currentTree, err := treeToMap(a, headCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+	stashTree, err := treeToMap(a, stashCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+	stashIndexTree, err := treeToMap(a, indexCommit.Tree, "")
+	if err != nil {
+		return err
+	}
+
+	mergedWorkTree, workContents, workConflicts, err := mergeTrees(a, baseTree, currentTree, stashTree)
+	if err != nil {
+		return err
+	}
+	mergedIndex, indexContents, indexConflicts, err := mergeTrees(a, baseTree, currentTree, stashIndexTree)
+	if err != nil {
+		return err
+	}
+	if len(workConflicts) > 0 || len(indexConflicts) > 0 {
+		conflicts := append(workConflicts, indexConflicts...)
+		return fmt.Errorf("stash conflicts in %s; no files or refs were changed", strings.Join(conflicts, ", "))
+	}
+	if err := persistStashMergedBlobs(a, mergedWorkTree, workContents); err != nil {
+		return err
+	}
+	if err := persistStashMergedBlobs(a, mergedIndex, indexContents); err != nil {
+		return err
+	}
+	if err := applyMergedTree(a, currentTree, mergedWorkTree); err != nil {
+		return err
+	}
+	for path := range a.Index.Entries() {
+		a.Index.Remove(path)
+	}
+	for path, blobID := range mergedIndex {
+		a.Index.Add(path, blobID)
+	}
+	if err := a.SaveIndex(); err != nil {
+		return err
+	}
+	fmt.Printf("Applied stash %s\n", id.Hex()[:7])
+	return nil
+}
+
+func persistStashMergedBlobs(a *app.App, tree map[string]sha1.Digest, contents map[string][]byte) error {
+	for path, data := range contents {
+		id, err := a.Store.WriteRaw(object.BlobType, data)
+		if err != nil {
+			return fmt.Errorf("stash: store merged blob %s: %w", path, err)
+		}
+		tree[path] = id
+	}
+	return nil
+}
+
+func stashLogPath(a *app.App) string {
+	return filepath.Join(a.Repo.GitDir, "logs", "refs", "stash")
+}
+
+func appendStashLog(a *app.App, id sha1.Digest) error {
+	path := stashLogPath(a)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	var entries []string
+	if data, err := os.ReadFile(path); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				entries = append(entries, line)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	entries = append([]string{id.Hex()}, entries...)
+	return writeStashLog(path, entries)
+}
+
+func writeStashLog(path string, entries []string) error {
+	var b strings.Builder
+	for i, entry := range entries {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(entry)
+	}
+	if len(entries) > 0 {
+		b.WriteByte('\n')
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+func stashList(a *app.App) error {
+	data, err := os.ReadFile(stashLogPath(a))
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No stash entries.")
+			return nil
+		}
+		return err
+	}
+	entries := stashLogEntries(data)
+	if len(entries) == 0 {
+		fmt.Println("No stash entries.")
+		return nil
+	}
+	for i, entry := range entries {
+		fmt.Printf("stash@{%d}: %s\n", i, entry[:7])
+	}
+	return nil
+}
+
+func stashShow(a *app.App, args []string) error {
+	id := resolveStashRef(a, args)
+	if id == sha1.Zero {
+		return fmt.Errorf("no stash to show")
+	}
 	obj, err := a.Store.Load(id)
 	if err != nil {
 		return err
@@ -138,141 +336,62 @@ func stashApply(a *app.App, id sha1.Digest) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("stash %s: %s\n", id.Hex()[:7], c.Message)
 	tm, err := treeToMap(a, c.Tree, "")
 	if err != nil {
 		return err
 	}
-	// Restore working tree files.
-	for path := range a.Index.Entries() {
-		_ = removeFile(a, path)
+	var paths []string
+	for path := range tm {
+		paths = append(paths, path)
 	}
-	for path, bid := range tm {
-		var data []byte
-		if bid != sha1.Zero {
-			data, err = readBlob(a, bid)
-			if err != nil {
-				return err
-			}
-		}
-		if bid == sha1.Zero {
-			_ = removeFile(a, path)
-			continue
-		}
-		if err := writeFile(a, path, data); err != nil {
-			return err
-		}
-	}
-	a.Index = indexFromTree(tm)
-	if err := a.SaveIndex(); err != nil {
-		return err
-	}
-	fmt.Printf("Applied stash %s\n", id.Hex()[:7])
-	return nil
-}
-
-func stashList(a *app.App) error {
-	stashPath := filepath.Join(a.Repo.GitDir, "refs", "stash")
-	b, err := os.ReadFile(stashPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No stash entries.")
-			return nil
-		}
-		return err
-	}
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	if len(lines) == 0 || lines[0] == "" {
-		fmt.Println("No stash entries.")
-		return nil
-	}
-	// Reverse so newest first (already newest-first in file).
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		fmt.Printf("stash@{%d}: %s\n", i, line[:7])
-	}
-	return nil
-}
-
-func stashShow(a *app.App, args []string) error {
-	stashID := resolveStashRef(a, args)
-	if stashID == sha1.Zero {
-		return fmt.Errorf("no stash to show")
-	}
-	obj, err := a.Store.Load(stashID)
-	if err != nil {
-		return err
-	}
-	c, err := commit.Parse(stashID, obj.Data)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("stash %s: %s\n", stashID.Hex()[:7], c.Message)
-	tm, err := treeToMap(a, c.Tree, "")
-	if err != nil {
-		return err
-	}
-	for path, bid := range tm {
-		fmt.Printf("%s\t%s\n", bid.Hex()[:7], path)
+	sort.Strings(paths)
+	for _, path := range paths {
+		fmt.Printf("%s\t%s\n", tm[path].Hex()[:7], path)
 	}
 	return nil
 }
 
 func stashDrop(a *app.App, args []string) error {
-	stashID := resolveStashRef(a, args)
-	if stashID == sha1.Zero {
+	id := resolveStashRef(a, args)
+	if id == sha1.Zero {
 		return fmt.Errorf("no stash to drop")
 	}
-	return stashDropRef(a, stashID)
+	return stashDropRef(a, id)
 }
 
 func stashDropRef(a *app.App, id sha1.Digest) error {
-	stashPath := filepath.Join(a.Repo.GitDir, "refs", "stash")
-	b, err := os.ReadFile(stashPath)
+	path := stashLogPath(a)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 	var kept []string
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || line == id.Hex() {
-			continue
+	for _, entry := range stashLogEntries(data) {
+		if entry != id.Hex() {
+			kept = append(kept, entry)
 		}
-		kept = append(kept, line)
 	}
-	var buf strings.Builder
-	for i, e := range kept {
-		if i > 0 {
-			buf.WriteByte('\n')
-		}
-		buf.WriteString(e)
-	}
-	if len(kept) > 0 {
-		buf.WriteByte('\n')
-	}
-	if err := os.WriteFile(stashPath, []byte(buf.String()), 0o644); err != nil {
+	if err := writeStashLog(path, kept); err != nil {
 		return err
 	}
 	if len(kept) == 0 {
-		_ = os.Remove(stashPath)
-	} else {
-		d, err := sha1.FromHex(kept[0])
-		if err != nil {
-			return err
-		}
-		if err := a.Refs.WriteRef("refs/stash", d); err != nil {
-			return err
-		}
+		_ = os.Remove(path)
+		return a.Refs.DeleteRef("refs/stash")
+	}
+	latest, err := sha1.FromHex(kept[0])
+	if err != nil {
+		return err
+	}
+	if err := a.Refs.WriteRef("refs/stash", latest); err != nil {
+		return err
 	}
 	fmt.Printf("Dropped %s\n", id.Hex()[:7])
 	return nil
 }
 
 func stashClear(a *app.App) error {
-	stashPath := filepath.Join(a.Repo.GitDir, "refs", "stash")
-	if err := os.Remove(stashPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(stashLogPath(a)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	_ = a.Refs.DeleteRef("refs/stash")
@@ -280,61 +399,41 @@ func stashClear(a *app.App) error {
 	return nil
 }
 
+func stashLogEntries(data []byte) []string {
+	var entries []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			entries = append(entries, line)
+		}
+	}
+	return entries
+}
+
 func resolveStashRef(a *app.App, args []string) sha1.Digest {
 	if len(args) > 0 {
-		// Parse stash@{N} or raw hash.
 		s := args[0]
 		if strings.HasPrefix(s, "stash@{") && strings.HasSuffix(s, "}") {
-			inner := s[len("stash@{") : len(s)-1]
-			n, err := strconv.Atoi(inner)
+			n, err := strconv.Atoi(s[len("stash@{") : len(s)-1])
+			if err != nil || n < 0 {
+				return sha1.Zero
+			}
+			data, err := os.ReadFile(stashLogPath(a))
 			if err != nil {
 				return sha1.Zero
 			}
-			stashPath := filepath.Join(a.Repo.GitDir, "refs", "stash")
-			b, err := os.ReadFile(stashPath)
-			if err != nil {
+			entries := stashLogEntries(data)
+			if n >= len(entries) {
 				return sha1.Zero
 			}
-			var entries []string
-			for _, line := range strings.Split(string(b), "\n") {
-				line = strings.TrimSpace(line)
-				if line != "" {
-					entries = append(entries, line)
-				}
-			}
-			if n < 0 || n >= len(entries) {
-				return sha1.Zero
-			}
-			d, err := sha1.FromHex(entries[n])
-			if err != nil {
-				return sha1.Zero
-			}
-			return d
+			id, _ := sha1.FromHex(entries[n])
+			return id
 		}
-		if d, err := sha1.FromHex(s); err == nil {
-			return d
+		if id, err := sha1.FromHex(s); err == nil {
+			return id
 		}
-		// Try ref.
-		if d, err := a.Refs.ReadRef("refs/stash"); err == nil {
-			return d
-		}
-		return sha1.Zero
 	}
-	// Default: latest stash.
-	if d, err := a.Refs.ReadRef("refs/stash"); err == nil {
-		return d
-	}
-	stashPath := filepath.Join(a.Repo.GitDir, "refs", "stash")
-	b, err := os.ReadFile(stashPath)
-	if err != nil {
-		return sha1.Zero
-	}
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			d, _ := sha1.FromHex(line)
-			return d
-		}
+	if id, err := a.Refs.ReadRef("refs/stash"); err == nil {
+		return id
 	}
 	return sha1.Zero
 }
