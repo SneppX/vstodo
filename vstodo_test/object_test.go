@@ -39,7 +39,7 @@ func TestObjectMarshalUnmarshal(t *testing.T) {
 		data []byte
 	}{
 		{object.BlobType, []byte("hello world")},
-		{object.TreeType, []byte("100644 file\0" + string(make([]byte, 20)))},
+		{object.TreeType, []byte("100644 file\x00" + string(make([]byte, 20)))},
 		{object.CommitType, []byte("tree abc\nparent def\nauthor x <x> 0 +0000\ncommitter y <y> 0 +0000\n\nmsg")},
 		{object.TagType, []byte("object abc\ntype commit\ntaggername <n> 0 +0000\n\ntag message")},
 	}
@@ -62,7 +62,7 @@ func TestObjectUnmarshalErrors(t *testing.T) {
 	if _, _, err := object.Unmarshal([]byte("no nul here")); err == nil {
 		t.Fatalf("expected error for missing NUL")
 	}
-	if _, _, err := object.Unmarshal([]byte("bogus\0data")); err == nil {
+	if _, _, err := object.Unmarshal([]byte("bogus\x00data")); err == nil {
 		t.Fatalf("expected error for unknown type")
 	}
 }
