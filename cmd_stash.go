@@ -117,7 +117,7 @@ func stashPush(a *app.App, args []string) error {
 	if err != nil {
 		return err
 	}
-	indexCommitData := commit.Build(indexTreeID, []sha1.Digest{headID}, "vstodo", "vstodo", "index state for stash")
+	indexCommitData := commit.Build(indexTreeID, []sha1.Digest{headID}, commitIdentity(a), commitIdentity(a), "index state for stash")
 	indexCommitID, err := a.Store.WriteRaw(object.CommitType, indexCommitData)
 	if err != nil {
 		return err
@@ -126,7 +126,7 @@ func stashPush(a *app.App, args []string) error {
 	if err != nil {
 		return err
 	}
-	stashData := commit.Build(workTreeID, []sha1.Digest{headID, indexCommitID}, "vstodo", "vstodo", msg)
+	stashData := commit.Build(workTreeID, []sha1.Digest{headID, indexCommitID}, commitIdentity(a), commitIdentity(a), msg)
 	stashID, err := a.Store.WriteRaw(object.CommitType, stashData)
 	if err != nil {
 		return err

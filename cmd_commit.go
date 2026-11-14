@@ -33,7 +33,7 @@ func cmdCommit(a *app.App, args []string) error {
 		parents = append(parents, headID)
 	}
 
-	cb := commit.Build(treeID, parents, "vstodo", "vstodo", msg)
+	cb := commit.Build(treeID, parents, commitIdentity(a), commitIdentity(a), msg)
 	commitID := object.HashCommit(cb)
 	if _, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: cb}); err != nil {
 		return err

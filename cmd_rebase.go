@@ -147,7 +147,7 @@ func cmdRebase(a *app.App, args []string) error {
 		if err != nil {
 			return err
 		}
-		rebasedData := commit.Build(treeID, []sha1.Digest{newParentID}, oldCommit.Author, "vstodo", oldCommit.Message)
+		rebasedData := commit.Build(treeID, []sha1.Digest{newParentID}, oldCommit.Author, commitIdentity(a), oldCommit.Message)
 		newID := object.HashCommit(rebasedData)
 		if _, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: rebasedData}); err != nil {
 			return err

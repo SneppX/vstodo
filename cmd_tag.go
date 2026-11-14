@@ -122,8 +122,8 @@ func cmdTag(a *app.App, args []string) error {
 		if strings.TrimSpace(message) == "" {
 			return fmt.Errorf("tag: annotated tags require a non-empty -m message")
 		}
-		payload := fmt.Sprintf("object %s\ntype commit\ntag %s\ntagger VSTodo <vstodo> %d +0000\n\n%s\n",
-			targetID.Hex(), name, time.Now().Unix(), message)
+		payload := fmt.Sprintf("object %s\ntype commit\ntag %s\ntagger %s %d +0000\n\n%s\n",
+			targetID.Hex(), name, commitIdentity(a), time.Now().Unix(), message)
 		refID, err = a.Store.WriteRaw(object.TagType, []byte(payload))
 		if err != nil {
 			return err

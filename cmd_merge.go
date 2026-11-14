@@ -130,7 +130,7 @@ func cmdMerge(a *app.App, args []string) error {
 	if err != nil {
 		return err
 	}
-	commitData := commit.Build(treeID, []sha1.Digest{currentID, otherID}, "vstodo", "vstodo", "Merge branch '"+branch+"'")
+	commitData := commit.Build(treeID, []sha1.Digest{currentID, otherID}, commitIdentity(a), commitIdentity(a), "Merge branch '"+branch+"'")
 	mergeID := object.HashCommit(commitData)
 	if _, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: commitData}); err != nil {
 		return err

@@ -106,7 +106,7 @@ func cmdCherryPick(a *app.App, args []string) error {
 		return err
 	}
 	message := "Cherry-pick: " + pickCommit.Message
-	commitData := commit.Build(treeID, []sha1.Digest{headID}, "vstodo", "vstodo", message)
+	commitData := commit.Build(treeID, []sha1.Digest{headID}, commitIdentity(a), commitIdentity(a), message)
 	newID := object.HashCommit(commitData)
 	if _, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: commitData}); err != nil {
 		return err
