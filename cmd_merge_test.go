@@ -7,7 +7,6 @@ import (
 
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
-	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 )
 
