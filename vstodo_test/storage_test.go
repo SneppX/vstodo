@@ -123,4 +123,3 @@ func TestStorageRejectsObjectWithMismatchedContentHash(t *testing.T) {
 		t.Fatal("Load succeeded for an object whose content does not match its object ID")
 	}
 }
-

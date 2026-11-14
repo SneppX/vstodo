@@ -35,7 +35,7 @@ func TestObjectHashBlobGitCompatible(t *testing.T) {
 
 func TestObjectMarshalUnmarshal(t *testing.T) {
 	cases := []struct {
-		typ object.Type
+		typ  object.Type
 		data []byte
 	}{
 		{object.BlobType, []byte("hello world")},
