@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"strconv"
 
 	"vstodo/internal/sha1"
 )
@@ -78,12 +79,19 @@ func Unmarshal(raw []byte) (Type, []byte, error) {
 	header := string(raw[:idx])
 	data := raw[idx+1:]
 	sp := strings.SplitN(header, " ", 2)
-	if len(sp) != 2 {
+	if len(sp) != 2 || sp[0] == "" || sp[1] == "" {
 		return "", nil, fmt.Errorf("object: malformed header %q", header)
 	}
 	typ := Type(sp[0])
 	if !validTypes[typ] {
 		return "", nil, fmt.Errorf("object: unknown type %q", typ)
+	}
+	size, err := strconv.ParseUint(sp[1], 10, 64)
+	if err != nil {
+		return "", nil, fmt.Errorf("object: invalid payload size %q: %w", sp[1], err)
+	}
+	if size != uint64(len(data)) {
+		return "", nil, fmt.Errorf("object: payload size mismatch: header says %d bytes, got %d", size, len(data))
 	}
 	return typ, data, nil
 }
