@@ -74,7 +74,7 @@ func (t *HTTPTransport) ListRefs(ctx context.Context, remoteURL, token string) (
 }
 
 type pktLine struct {
-	data []byte
+	data  []byte
 	flush bool
 }
 

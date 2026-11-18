@@ -79,12 +79,12 @@ func cmdRemote(a *app.App, args []string) error {
 		if len(args) != 2 {
 			return fmt.Errorf("usage: vstodo remote remove <name>")
 		}
-		return cfg.UnsetAndSave("remote."+args[1]+".url")
+		return cfg.UnsetAndSave("remote." + args[1] + ".url")
 	case "get-url":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: vstodo remote get-url <name>")
 		}
-		value := cfg.Get("remote."+args[1]+".url")
+		value := cfg.Get("remote." + args[1] + ".url")
 		if value == "" {
 			return fmt.Errorf("remote: %q does not exist", args[1])
 		}
@@ -105,7 +105,7 @@ func cmdLSRemote(a *app.App, args []string) error {
 		if err != nil {
 			return err
 		}
-		remoteURL = cfg.Get("remote."+args[0]+".url")
+		remoteURL = cfg.Get("remote." + args[0] + ".url")
 		if remoteURL == "" {
 			return fmt.Errorf("remote: %q does not exist", args[0])
 		}
