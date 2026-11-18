@@ -178,6 +178,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
+	case "remote":
+		if err := cmdRemote(a, args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
+			os.Exit(1)
+		}
+	case "ls-remote":
+		if err := cmdLSRemote(a, args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -219,6 +229,8 @@ Advanced commands:
   gc           Cleanup unnecessary files and optimize the repository
   worktree     Manage multiple working trees
   bundle       Move objects and refs by archive
+  remote       Manage named HTTP remotes
+  ls-remote    List references advertised by a remote
 
 Plumbing:
   hash-object   Compute the object ID for a file

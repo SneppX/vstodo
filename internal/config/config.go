@@ -126,3 +126,11 @@ func (c *Config) All() map[string]string {
 	}
 	return out
 }
+
+// UnsetAndSave removes a key and persists the updated configuration.
+func (c *Config) UnsetAndSave(key string) error {
+	if err := c.Unset(key); err != nil {
+		return err
+	}
+	return c.Save()
+}
