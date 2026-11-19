@@ -47,6 +47,7 @@ func TestHTTPTransportListRefsParsesV1Advertisement(t *testing.T) {
 func TestHTTPTransportListRefsUsesTokenBasicAuth(t *testing.T) {
 	body := packetLine("3333333333333333333333333333333333333333 refs/heads/main\x00report-status\n") + "0000"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != "x-access-token" || pass != "secret-token" {
 			t.Fatalf("unexpected basic auth: %q %q %v", user, pass, ok)
@@ -114,5 +115,28 @@ func TestParseSidebandPackHandlesProgressAndErrors(t *testing.T) {
 	fatal := packetLine(string(append([]byte{3}, []byte("denied\n")...)))
 	if _, err := parseSidebandPack(strings.NewReader(fatal)); err == nil || !strings.Contains(err.Error(), "denied") {
 		t.Fatalf("expected remote fatal error, got %v", err)
+	}
+}
+
+func TestHTTPTransportListPushRefsUsesReceivePackAdvertisement(t *testing.T) {
+	const branchID = "4444444444444444444444444444444444444444"
+	body := packetLine("# service=git-receive-pack\n") + "0000" + packetLine(branchID+" refs/heads/main\x00report-status side-band-64k\n") + "0000"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("service") != "git-receive-pack" {
+			t.Fatalf("unexpected service query: %q", r.URL.RawQuery)
+		}
+		if r.Header.Get("Accept") != "application/x-git-receive-pack-advertisement" {
+			t.Fatalf("unexpected Accept header: %q", r.Header.Get("Accept"))
+		}
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer server.Close()
+	refs, err := NewHTTPTransport().ListPushRefs(context.Background(), server.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].Name != "refs/heads/main" || refs[0].Hash.Hex() != branchID {
+		t.Fatalf("unexpected push refs: %#v", refs)
 	}
 }

@@ -135,6 +135,15 @@ func parseSidebandPack(body io.Reader) ([]byte, error) {
 
 // ListRefs requests the v0/v1 upload-pack advertisement from a remote.
 func (t *HTTPTransport) ListRefs(ctx context.Context, remoteURL, token string) ([]RemoteRef, error) {
+	return t.listRefs(ctx, remoteURL, token, "git-upload-pack")
+}
+
+// ListPushRefs requests the receive-pack advertisement used to negotiate pushes.
+func (t *HTTPTransport) ListPushRefs(ctx context.Context, remoteURL, token string) ([]RemoteRef, error) {
+	return t.listRefs(ctx, remoteURL, token, "git-receive-pack")
+}
+
+func (t *HTTPTransport) listRefs(ctx context.Context, remoteURL, token, service string) ([]RemoteRef, error) {
 	u, err := url.Parse(remoteURL)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return nil, errors.New("remote: URL must be an absolute HTTP or HTTPS URL")
@@ -144,14 +153,14 @@ func (t *HTTPTransport) ListRefs(ctx context.Context, remoteURL, token string) (
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/info/refs"
 	q := u.Query()
-	q.Set("service", "git-upload-pack")
+	q.Set("service", service)
 	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("remote: create request: %w", err)
 	}
-	req.Header.Set("Accept", "application/x-git-upload-pack-advertisement")
+	req.Header.Set("Accept", "application/x-"+service+"-advertisement")
 	req.Header.Set("User-Agent", "vstodo/0.1")
 	if token != "" {
 		req.SetBasicAuth("x-access-token", token)
@@ -169,7 +178,11 @@ func (t *HTTPTransport) ListRefs(ctx context.Context, remoteURL, token string) (
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("remote: server returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	return parseUploadPackAdvertisement(io.LimitReader(resp.Body, 8<<20))
+	expectedType := "application/x-" + service + "-advertisement"
+	if contentType := resp.Header.Get("Content-Type"); !strings.HasPrefix(contentType, expectedType) {
+		return nil, fmt.Errorf("remote: unexpected ref advertisement content type %q", contentType)
+	}
+	return parseServiceAdvertisement(io.LimitReader(resp.Body, 8<<20), service)
 }
 
 type pktLine struct {
@@ -203,6 +216,14 @@ func readPktLine(r *bufio.Reader) (pktLine, error) {
 }
 
 func parseUploadPackAdvertisement(body io.Reader) ([]RemoteRef, error) {
+	return parseServiceAdvertisement(body, "git-upload-pack")
+}
+
+func parseReceivePackAdvertisement(body io.Reader) ([]RemoteRef, error) {
+	return parseServiceAdvertisement(body, "git-receive-pack")
+}
+
+func parseServiceAdvertisement(body io.Reader, service string) ([]RemoteRef, error) {
 	r := bufio.NewReader(body)
 	var refs []RemoteRef
 	serviceSeen := false
@@ -218,7 +239,7 @@ func parseUploadPackAdvertisement(body io.Reader) ([]RemoteRef, error) {
 			continue
 		}
 		line := strings.TrimSuffix(string(packet.data), "\n")
-		if !serviceSeen && strings.HasPrefix(line, "# service=git-upload-pack") {
+		if !serviceSeen && strings.HasPrefix(line, "# service="+service) {
 			serviceSeen = true
 			continue
 		}
@@ -244,4 +265,5 @@ func parseUploadPackAdvertisement(body io.Reader) ([]RemoteRef, error) {
 	}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].Name < refs[j].Name })
 	return refs, nil
+
 }

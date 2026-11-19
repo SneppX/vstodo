@@ -193,6 +193,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
+	case "push":
+		if err := cmdPush(a, args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -236,6 +241,8 @@ Advanced commands:
   bundle       Move objects and refs by archive
   remote       Manage named HTTP remotes
   ls-remote    List references advertised by a remote
+  fetch        Download remote objects and update tracking refs
+  push         Publish a branch to an HTTP remote (fast-forward only)
 
 Plumbing:
   hash-object   Compute the object ID for a file

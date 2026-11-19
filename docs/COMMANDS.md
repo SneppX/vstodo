@@ -260,3 +260,49 @@ vstodo demo
 Run a built-in end-to-end demonstration: initialize a scratch repository, add
 files, make commits, and print the resulting history and object graph. Intended
 for newcomers to see `vstodo` in action without creating real files.
+
+## HTTP remote commands
+
+### remote
+
+```sh
+vstodo remote add <name> <https-url>
+vstodo remote -v
+vstodo remote get-url <name>
+vstodo remote remove <name>
+```
+
+Configure and inspect named HTTP/HTTPS remotes. Remote URLs must not embed
+credentials, query strings, or fragments. Supply credentials through the
+`VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN` environment variable.
+
+### ls-remote
+
+```sh
+vstodo ls-remote <remote-or-url>
+```
+
+List the branch and tag references advertised by an HTTP smart-transport
+remote.
+
+### fetch
+
+```sh
+vstodo fetch [remote]
+```
+
+Download the advertised remote objects and update remote-tracking references.
+The default remote is `origin`. This command does not modify the current local
+branch or working tree.
+
+### push
+
+```sh
+vstodo push [remote] [branch]
+```
+
+Publish a local branch using Git smart-HTTP `receive-pack`. The default remote
+is `origin`; the default branch is the current branch. Pushes are fast-forward
+only and are rejected when the remote tip is not an ancestor of the local tip.
+Force pushes, tag pushes, and multi-ref pushes are not supported yet. GitHub
+credentials are read from `VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN`.

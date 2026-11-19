@@ -1,4 +1,4 @@
-﻿# VSTodo
+# VSTodo
 
 **A new version control system, built from the ground up in Go.**
 
@@ -22,11 +22,20 @@ The long-term vision is to build a complete version control ecosystem.
 ## Built With
 
 - Go
-- Git
+- Git-compatible object formats and smart-HTTP protocols for interoperability
+
+## Remote transport
+
+VSTodo currently supports HTTP smart-transport reference discovery, fetch, clone,
+and fast-forward-only branch push. For GitHub authentication, set
+`VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN` in the environment. Pushes do not yet
+support force updates, tags, or multiple refs in one operation.
 
 ## Project Status
 
-VSTodo is currently in its initial development stage. Features and architecture will evolve as development progresses.
+VSTodo is under active development. Its local version-control workflows and
+initial GitHub-compatible HTTP transport are implemented; broader protocol and
+interoperability coverage is still in progress.
 
 ## Development Philosophy
 
