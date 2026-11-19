@@ -306,3 +306,15 @@ is `origin`; the default branch is the current branch. Pushes are fast-forward
 only and are rejected when the remote tip is not an ancestor of the local tip.
 Force pushes, tag pushes, and multi-ref pushes are not supported yet. GitHub
 credentials are read from `VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN`.
+
+### pull
+
+```sh
+vstodo pull [remote] [branch]
+```
+
+Fetch the selected remote branch, then fast-forward or three-way merge its
+remote-tracking ref into the current local branch. The default remote is
+`origin`; the default source branch is the current branch name. Pull requires
+a clean working tree and preserves fetched objects and remote-tracking refs
+if the merge reports conflicts.

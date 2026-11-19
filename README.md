@@ -27,7 +27,7 @@ The long-term vision is to build a complete version control ecosystem.
 ## Remote transport
 
 VSTodo currently supports HTTP smart-transport reference discovery, fetch, clone,
-and fast-forward-only branch push. For GitHub authentication, set
+fast-forward-only branch push, and fetch-plus-merge pull. For GitHub authentication, set
 `VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN` in the environment. Pushes do not yet
 support force updates, tags, or multiple refs in one operation.
 

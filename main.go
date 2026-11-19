@@ -198,6 +198,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
+	case "pull":
+		if err := cmdPull(a, args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -243,6 +248,7 @@ Advanced commands:
   ls-remote    List references advertised by a remote
   fetch        Download remote objects and update tracking refs
   push         Publish a branch to an HTTP remote (fast-forward only)
+  pull         Fetch a remote branch and merge it into the current branch
 
 Plumbing:
   hash-object   Compute the object ID for a file

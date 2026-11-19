@@ -30,7 +30,10 @@ func cmdMerge(a *app.App, args []string) error {
 	}
 	otherID, err := a.Refs.ReadRef("refs/heads/" + branch)
 	if err != nil {
-		return fmt.Errorf("no such branch: %s", branch)
+		otherID, err = a.Refs.ReadRef("refs/remotes/" + branch)
+	}
+	if err != nil {
+		return fmt.Errorf("no such local or remote-tracking branch: %s", branch)
 	}
 	if otherID == currentID {
 		fmt.Println("Already up to date.")
