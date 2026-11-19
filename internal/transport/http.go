@@ -3,6 +3,7 @@ package transport
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -32,6 +33,104 @@ type HTTPTransport struct {
 // NewHTTPTransport returns an HTTP transport with bounded request timeouts.
 func NewHTTPTransport() *HTTPTransport {
 	return &HTTPTransport{Client: &http.Client{Timeout: 20 * time.Second}}
+}
+
+// FetchPack requests all objects reachable from the supplied tips using Git smart HTTP v0.
+func (t *HTTPTransport) FetchPack(ctx context.Context, remoteURL, token string, wants []sha1.Digest) ([]byte, error) {
+	if len(wants) == 0 {
+		return nil, errors.New("remote: at least one object ID is required")
+	}
+	u, err := url.Parse(remoteURL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return nil, errors.New("remote: URL must be an absolute HTTP or HTTPS URL")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("remote: credentials, query strings, and fragments are not allowed in remote URLs")
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/git-upload-pack"
+
+	var request bytes.Buffer
+	for i, want := range wants {
+		line := "want " + want.Hex()
+		if i == 0 {
+			line += " multi_ack_detailed side-band-64k ofs-delta agent=vstodo/0.1"
+		}
+		line += "\n"
+		if _, err := fmt.Fprintf(&request, "%04x%s", len(line)+4, line); err != nil {
+			return nil, err
+		}
+	}
+	request.WriteString("0000")
+	request.WriteString("0009done\n")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(request.Bytes()))
+	if err != nil {
+		return nil, fmt.Errorf("remote: create fetch request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-git-upload-pack-request")
+	req.Header.Set("Accept", "application/x-git-upload-pack-result")
+	req.Header.Set("User-Agent", "vstodo/0.1")
+	if token != "" {
+		req.SetBasicAuth("x-access-token", token)
+	}
+	client := t.Client
+	if client == nil {
+		client = NewHTTPTransport().Client
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("remote: fetch pack: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("remote: fetch returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	if contentType := resp.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "application/x-git-upload-pack-result") {
+		return nil, fmt.Errorf("remote: unexpected fetch content type %q", contentType)
+	}
+	return parseSidebandPack(io.LimitReader(resp.Body, (1<<30)+1))
+}
+
+func parseSidebandPack(body io.Reader) ([]byte, error) {
+	const maxPackSize = 1 << 30
+	r := bufio.NewReader(body)
+	var pack bytes.Buffer
+	for {
+		packet, err := readPktLine(r)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if packet.flush {
+			continue
+		}
+		if len(packet.data) == 0 {
+			continue
+		}
+		if strings.HasPrefix(string(packet.data), "NAK") || strings.HasPrefix(string(packet.data), "ACK ") {
+			continue
+		}
+		switch packet.data[0] {
+		case 1:
+			if pack.Len()+len(packet.data)-1 > maxPackSize {
+				return nil, errors.New("remote: pack exceeds 1 GiB safety limit")
+			}
+			_, _ = pack.Write(packet.data[1:])
+		case 2:
+			// Progress channel is intentionally not written to stdout.
+		case 3:
+			return nil, fmt.Errorf("remote: server error: %s", strings.TrimSpace(string(packet.data[1:])))
+		default:
+			return nil, fmt.Errorf("remote: invalid sideband channel %d", packet.data[0])
+		}
+	}
+	if pack.Len() == 0 {
+		return nil, errors.New("remote: server returned no pack data")
+	}
+	return pack.Bytes(), nil
 }
 
 // ListRefs requests the v0/v1 upload-pack advertisement from a remote.
