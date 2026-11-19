@@ -129,7 +129,7 @@ func treeToMap(a *app.App, id sha1.Digest, prefix string) (map[string]sha1.Diges
 	out := make(map[string]sha1.Digest)
 	for _, e := range t.Entries {
 		p := prefix + e.Name
-		if e.Mode == "040000" {
+		if e.Mode == "040000" || e.Mode == "40000" {
 			sub, err := treeToMap(a, e.ID, p+"/")
 			if err != nil {
 				return nil, err

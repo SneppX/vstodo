@@ -247,7 +247,7 @@ func (w *PackWriter) encodeObject(obj *object.Object, placed []packedPlaced, cur
 	}
 
 	// Plain object.
-	raw := object.Marshal(obj.Type, obj.Data)
+	raw := obj.Data
 	comp, err := zlibCompress(raw)
 	if err != nil {
 		return po, err
@@ -273,7 +273,7 @@ type packedPlaced struct {
 }
 
 // objHeader produces the pack object header: type in high nibble of first byte,
-// size as 7-bit groups (LSB first) with continuation high bit.
+// low 4 size bits in the first byte, then 7-bit groups with continuation.
 func objHeader(t ObjectType, size uint64) []byte {
 	var out []byte
 	first := byte(t<<4) | byte(size&0x0f)
@@ -294,19 +294,21 @@ func objHeader(t ObjectType, size uint64) []byte {
 }
 
 // encodeOFSOffset encodes the OFS_DELTA offset (git stores offset-1).
-func encodeOFSOffset(off uint64) []byte {
-	v := off - 1
-	var out []byte
-	for {
-		b := byte(v & 0x7f)
-		v >>= 7
-		if v > 0 {
-			out = append(out, b|0x80)
-		} else {
-			out = append(out, b)
-			return out
-		}
+func encodeOFSOffset(distance uint64) []byte {
+	if distance == 0 {
+		return nil
 	}
+	out := []byte{byte(distance & 0x7f)}
+	distance >>= 7
+	for distance > 0 {
+		distance--
+		out = append(out, byte(distance&0x7f)|0x80)
+		distance >>= 7
+	}
+	for left, right := 0, len(out)-1; left < right; left, right = left+1, right-1 {
+		out[left], out[right] = out[right], out[left]
+	}
+	return out
 }
 
 // decodeOFSOffset decodes the OFS_DELTA offset encoding back to offset.
@@ -315,21 +317,25 @@ func decodeOFSOffset(data []byte, off int) (uint64, int, error) {
 	if off >= len(data) {
 		return 0, 0, errors.New("packfile: truncated ofs offset")
 	}
-	var offset uint64
-	var shift uint
-	for {
-		b := data[off]
-		off++
-		offset |= uint64(b&0x7f) << shift
-		shift += 7
-		if b&0x80 == 0 {
-			break
-		}
+	b := data[off]
+	off++
+	value := uint64(b & 0x7f)
+	for b&0x80 != 0 {
 		if off >= len(data) {
 			return 0, 0, errors.New("packfile: truncated ofs offset continuation")
 		}
+		if value == ^uint64(0) {
+			return 0, 0, errors.New("packfile: ofs offset overflow")
+		}
+		value++
+		if value > (^uint64(0) >> 7) {
+			return 0, 0, errors.New("packfile: ofs offset overflow")
+		}
+		b = data[off]
+		off++
+		value = (value << 7) | uint64(b&0x7f)
 	}
-	return offset + 1, off, nil
+	return value, off, nil
 }
 
 // varintLen returns the encoded length of a 7-bit varint.
@@ -629,23 +635,22 @@ func ReadPack(data []byte) (*Pack, error) {
 			if uint64(len(raw)) != size {
 				return nil, fmt.Errorf("packfile: object %d size mismatch", i)
 			}
-			nul := bytes.IndexByte(raw, 0)
-			if nul < 0 {
-				return nil, fmt.Errorf("packfile: object %d missing NUL", i)
-			}
 			vt, err := gitTypeToVstodo(typ)
 			if err != nil {
 				return nil, err
 			}
 			ro.vt = vt
-			ro.data = raw[nul+1:]
+			ro.data = raw
 			off += consumed
 		case ObjOFSDelta:
-			baseOff, newOff, err := decodeOFSOffset(data, off)
+			baseDistance, newOff, err := decodeOFSOffset(data, off)
 			if err != nil {
 				return nil, fmt.Errorf("packfile: object %d ofs offset: %w", i, err)
 			}
-			ro.baseOff = baseOff
+			if baseDistance > uint64(cur) {
+				return nil, fmt.Errorf("packfile: object %d ofs base offset underflow", i)
+			}
+			ro.baseOff = uint64(cur) - baseDistance
 			off = newOff
 			delta, consumed, err := zlibDecompressWithCount(data[off:])
 			if err != nil {
@@ -710,20 +715,20 @@ func ReadPack(data []byte) (*Pack, error) {
 					}
 					base = resolved[j]
 				}
-				data, err := applyDelta(base.Data, ro.delta)
+				resolvedData, err := applyDelta(base.Data, ro.delta)
 				if err != nil {
 					return nil, fmt.Errorf("packfile: apply delta %d: %w", i, err)
 				}
-				po := &PackedObject{Type: base.Type, Data: data, Offset: ro.off, Length: ro.end - ro.off}
+				po := &PackedObject{Type: base.Type, Data: resolvedData, Offset: ro.off, Length: ro.end - ro.off}
 				po.ID = object.ComputeID(po.Type, po.Data)
-				po.CRC32 = crc32.ChecksumIEEE(data)
+				po.CRC32 = crc32.ChecksumIEEE(data[int(ro.off):int(ro.end)])
 				resolved[i] = po
 				byID[po.ID] = i
 				changed = true
 			} else {
 				po := &PackedObject{Type: ro.vt, Data: ro.data, Offset: ro.off, Length: ro.end - ro.off}
 				po.ID = object.ComputeID(po.Type, po.Data)
-				po.CRC32 = crc32.ChecksumIEEE(ro.data)
+				po.CRC32 = crc32.ChecksumIEEE(data[int(ro.off):int(ro.end)])
 				resolved[i] = po
 				byID[po.ID] = i
 				changed = true
@@ -791,12 +796,21 @@ func applyDelta(base, delta []byte) ([]byte, error) {
 		return nil, errors.New("packfile: delta too short")
 	}
 	di := 0
-	srcSize, n := readVarInt(delta, di)
-	di += n
-	tgtSize, n := readVarInt(delta, di)
-	di += n
+	srcSize, next, err := readVarInt(delta, di)
+	if err != nil {
+		return nil, err
+	}
+	di = next
+	tgtSize, next, err := readVarInt(delta, di)
+	if err != nil {
+		return nil, err
+	}
+	di = next
 	if uint64(len(base)) != srcSize {
 		return nil, fmt.Errorf("packfile: delta base size mismatch %d != %d", len(base), srcSize)
+	}
+	if tgtSize > 1<<30 || tgtSize > uint64(^uint(0)>>1) {
+		return nil, errors.New("packfile: delta target exceeds safety limit")
 	}
 	var out bytes.Buffer
 	out.Grow(int(tgtSize))
@@ -804,55 +818,68 @@ func applyDelta(base, delta []byte) ([]byte, error) {
 		cmd := delta[di]
 		di++
 		if cmd&0x80 != 0 {
-			// Copy.
 			var offset uint64
 			var size uint64
-			if cmd&0x10 != 0 {
-				offset |= uint64(delta[di]) << 24
+			readField := func(flag byte, shift uint) (uint64, error) {
+				if cmd&flag == 0 {
+					return 0, nil
+				}
+				if di >= len(delta) {
+					return 0, errors.New("packfile: truncated delta copy instruction")
+				}
+				value := uint64(delta[di]) << shift
 				di++
+				return value, nil
 			}
-			if cmd&0x20 != 0 {
-				offset |= uint64(delta[di]) << 16
-				di++
+			fields := []struct {
+				flag  byte
+				shift uint
+			}{
+				{0x01, 0}, {0x02, 8}, {0x04, 16}, {0x08, 24},
 			}
-			if cmd&0x40 != 0 {
-				offset |= uint64(delta[di]) << 8
-				di++
+			for _, field := range fields {
+				value, err := readField(field.flag, field.shift)
+				if err != nil {
+					return nil, err
+				}
+				offset |= value
 			}
-			// offset low byte always present
-			if di < len(delta) {
-				offset |= uint64(delta[di])
-				di++
+			fields = []struct {
+				flag  byte
+				shift uint
+			}{
+				{0x10, 0}, {0x20, 8}, {0x40, 16},
 			}
-			if cmd&0x08 != 0 {
-				size |= uint64(delta[di]) << 16
-				di++
-			}
-			if cmd&0x04 != 0 {
-				size |= uint64(delta[di]) << 8
-				di++
-			}
-			if cmd&0x02 != 0 {
-				size |= uint64(delta[di])
-				di++
+			for _, field := range fields {
+				value, err := readField(field.flag, field.shift)
+				if err != nil {
+					return nil, err
+				}
+				size |= value
 			}
 			if size == 0 {
 				size = 0x10000
 			}
-			if int(offset)+int(size) > len(base) {
+			if offset > uint64(len(base)) || size > uint64(len(base))-offset {
 				return nil, errors.New("packfile: delta copy out of range")
 			}
-			out.Write(base[offset : offset+size])
+			if uint64(out.Len())+size > tgtSize {
+				return nil, errors.New("packfile: delta copy exceeds target size")
+			}
+			out.Write(base[int(offset):int(offset+size)])
 		} else {
-			sz := int(cmd & 0x7f)
+			sz := uint64(cmd & 0x7f)
 			if sz == 0 {
 				return nil, errors.New("packfile: delta insert size 0")
 			}
-			if di+sz > len(delta) {
+			if sz > uint64(len(delta)-di) {
 				return nil, errors.New("packfile: delta insert out of range")
 			}
-			out.Write(delta[di : di+sz])
-			di += sz
+			if uint64(out.Len())+sz > tgtSize {
+				return nil, errors.New("packfile: delta insert exceeds target size")
+			}
+			out.Write(delta[di : di+int(sz)])
+			di += int(sz)
 		}
 	}
 	result := out.Bytes()
@@ -863,17 +890,24 @@ func applyDelta(base, delta []byte) ([]byte, error) {
 }
 
 // readVarInt reads a 7-bit little-endian varint from data at di.
-func readVarInt(data []byte, di int) (uint64, int) {
-	var v uint64
+func readVarInt(data []byte, di int) (uint64, int, error) {
+	var value uint64
 	var shift uint
 	for {
+		if di >= len(data) {
+			return 0, di, errors.New("packfile: truncated delta size")
+		}
 		b := data[di]
 		di++
-		v |= uint64(b&0x7f) << shift
-		shift += 7
-		if b&0x80 == 0 {
-			return v, di
+		part := uint64(b & 0x7f)
+		if shift >= 64 || part > (^uint64(0)>>shift) {
+			return 0, di, errors.New("packfile: delta size overflow")
 		}
+		value |= part << shift
+		if b&0x80 == 0 {
+			return value, di, nil
+		}
+		shift += 7
 	}
 }
 

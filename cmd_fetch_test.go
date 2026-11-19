@@ -92,7 +92,7 @@ func makeFetchPack(t *testing.T, objects ...*object.Object) []byte {
 		t.Fatal(err)
 	}
 	for _, obj := range objects {
-		raw := object.Marshal(obj.Type, obj.Data)
+		raw := obj.Data
 		size := len(raw)
 		first := byte(0)
 		switch obj.Type {

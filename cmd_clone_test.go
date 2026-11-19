@@ -4,22 +4,30 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"vstodo/internal/app"
 	"vstodo/internal/object"
+	"vstodo/internal/tree"
 )
 
 func TestCloneFromHTTPRemoteChecksOutDefaultBranch(t *testing.T) {
-	treeObject := &object.Object{Type: object.TreeType, Data: []byte{}}
-	treeID := object.ComputeID(treeObject.Type, treeObject.Data)
+	blobObject := &object.Object{Type: object.BlobType, Data: []byte("nested payload\n")}
+	blobID := object.ComputeID(blobObject.Type, blobObject.Data)
+	innerTreeData := tree.Build([]tree.Entry{{Mode: "100644", Name: "README", ID: blobID}})
+	innerTreeObject := &object.Object{Type: object.TreeType, Data: innerTreeData}
+	innerTreeID := object.ComputeID(innerTreeObject.Type, innerTreeObject.Data)
+	rootTreeData := tree.Build([]tree.Entry{{Mode: "40000", Name: "docs", ID: innerTreeID}})
+	rootTreeObject := &object.Object{Type: object.TreeType, Data: rootTreeData}
+	rootTreeID := object.ComputeID(rootTreeObject.Type, rootTreeObject.Data)
 	commitObject := &object.Object{
 		Type: object.CommitType,
-		Data: []byte(fmt.Sprintf("tree %s\nauthor Test <test@example.com> 1 +0000\ncommitter Test <test@example.com> 1 +0000\n\nremote commit\n", treeID.Hex())),
+		Data: []byte(fmt.Sprintf("tree %s\nauthor Test <test@example.com> 1 +0000\ncommitter Test <test@example.com> 1 +0000\n\nremote commit\n", rootTreeID.Hex())),
 	}
 	commitID := object.ComputeID(commitObject.Type, commitObject.Data)
-	packBytes := makeFetchPack(t, treeObject, commitObject)
+	packBytes := makeFetchPack(t, blobObject, innerTreeObject, rootTreeObject, commitObject)
 	advertisement := packetLineForFetch("# service=git-upload-pack\n") + "0000" +
 		packetLineForFetch(commitID.Hex()+" HEAD\x00multi_ack side-band-64k ofs-delta symref=HEAD:refs/heads/main\n") +
 		packetLineForFetch(commitID.Hex()+" refs/heads/main\n") + "0000"
@@ -38,7 +46,6 @@ func TestCloneFromHTTPRemoteChecksOutDefaultBranch(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-
 	destination := filepath.Join(t.TempDir(), "clone")
 	if err := cmdClone([]string{server.URL + "/repo.git", destination}); err != nil {
 		t.Fatal(err)
@@ -67,5 +74,12 @@ func TestCloneFromHTTPRemoteChecksOutDefaultBranch(t *testing.T) {
 	}
 	if got := remote.Get("remote.origin.url"); got != server.URL+"/repo.git" {
 		t.Fatalf("origin URL = %q", got)
+	}
+	content, err := os.ReadFile(filepath.Join(destination, "docs", "README"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "nested payload\n" {
+		t.Fatalf("nested file content = %q", content)
 	}
 }

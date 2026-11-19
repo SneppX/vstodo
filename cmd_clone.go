@@ -12,7 +12,6 @@ import (
 	"vstodo/internal/transport"
 )
 
-// cmdClone clones a local VSTodo repository or an HTTP smart-transport remote.
 func cmdClone(args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("usage: vstodo clone <src> <dst>")
@@ -21,7 +20,6 @@ func cmdClone(args []string) error {
 	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
 		return cloneHTTPRemote(src, dst)
 	}
-
 	srcApp, err := app.New(src)
 	if err != nil {
 		return fmt.Errorf("open src: %w", err)
@@ -58,7 +56,6 @@ func cloneHTTPRemote(remoteURL, destination string) error {
 	if err := fetchRemote(dstApp, "origin", remoteURL); err != nil {
 		return fmt.Errorf("clone: fetch origin: %w", err)
 	}
-
 	head, err := dstApp.Refs.ReadRef("refs/remotes/origin/HEAD")
 	if err != nil {
 		return fmt.Errorf("clone: remote did not advertise a usable HEAD: %w", err)
@@ -108,9 +105,6 @@ func cloneHTTPRemote(remoteURL, destination string) error {
 			break
 		}
 	}
-
-	// Detach the unborn initial HEAD before creating the local branch. This
-	// keeps checkout's cleanliness check from treating remote files as deletions.
 	if err := dstApp.Refs.SetHead(sha1.Zero.Hex()); err != nil {
 		return err
 	}
