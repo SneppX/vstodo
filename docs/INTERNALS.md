@@ -78,9 +78,12 @@ For object `dae86e3...9f2`, the path is:
 The file contains only the zlib-compressed bytes (no header wrapper). Files are
 created read-only (`0444`) to emphasize immutability.
 
-The store is append-only and content-addressed: storing the same object twice
-writes the same path and returns the same digest. There are no packfiles, no
-deltas, and no alternate object stores in the current implementation.
+The local store is append-only and content-addressed: storing the same object
+twice writes the same path and returns the same digest. The local backend stores
+loose objects only. Separately, `internal/packfile` reads and writes Git packfiles
+for HTTP transport, resolves supported deltas, and expands fetched objects into
+the loose store. Persistent packfile storage and alternate object stores are not
+implemented yet.
 
 ## Object type details
 

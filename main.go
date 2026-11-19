@@ -212,7 +212,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`vstodo - a simple version control system (reverse-engineered from git, extended beyond it)
+	fmt.Println(`vstodo - an independent version-control system with Git-compatible interoperability
 
 Usage: vstodo <command> [options] [args]
 

@@ -1,9 +1,6 @@
 # Architecture
 
-`vstodo` is a Git-like version control system, reverse-engineered from Git's
-internals and extended beyond Git. It is a small, self-contained Go project with
-no external dependencies. The library lives under `internal/` and the command-line
-interface lives in package `main` at the repository root.
+`vstodo` is an independently implemented version-control system written in Go. It does not copy or reverse-engineer Git's source code. It uses Git-compatible object serialization and a subset of Git smart-HTTP for interoperability. It is a small, self-contained project with no external dependencies. The library lives under `internal/` and the command-line interface lives in package `main` at the repository root.
 
 ## Design goals
 
@@ -17,8 +14,11 @@ interface lives in package `main` at the repository root.
   file (`<hex digest>\t<path>`) at `.vstodo/index` rather than Git's binary
   packed index.
 - **Pluggable storage**: the object store is an interface (`object.Store`) with
-  a loose-files implementation (`storage.LooseStore`). A packfile or database
-  backend can be added without touching the rest of the code.
+  a loose-files implementation (`storage.LooseStore`). Packfile codecs support
+  remote exchange; a persistent packfile or database backend can be added
+  without changing commit/tree/index logic.
+- **HTTP remote interoperability**: the transport layer supports smart-HTTP
+  reference discovery, clone, fetch, pull, and fast-forward-only branch push.
 - **Embeddable library**: the `app.App` type wires together repo, store, index,
   and refs so Go programs can use `vstodo` as an embedded VCS.
 
@@ -39,10 +39,12 @@ vstodo/                      # module root, package main (CLI)
     ├── commit/              # commit object build/parse
     ├── index/               # staging area (path -> blob digest)
     ├── object/              # object model, hashing, marshaling, zlib
-    ├── ref/                 # HEAD, branches, tags
+    ├── packfile/            # packfile reader/writer and delta resolution
+    ├── ref/                 # HEAD, branches, tags, remote-tracking refs
     ├── repo/                # repository discovery/init and path helpers
     ├── sha1/                # SHA-1 digest type and hashing helpers
     ├── storage/             # loose object store (.vstodo/objects/<2>/<38>)
+    ├── transport/           # HTTP smart-transport discovery/fetch/push
     ├── tree/                # tree object build/parse
     └── walk/                # commit-graph traversal
 ```
