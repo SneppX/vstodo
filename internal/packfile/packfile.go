@@ -276,8 +276,11 @@ type packedPlaced struct {
 // size as 7-bit groups (LSB first) with continuation high bit.
 func objHeader(t ObjectType, size uint64) []byte {
 	var out []byte
-	first := byte(t<<4) | byte(size&0x7f)
-	size >>= 7
+	first := byte(t<<4) | byte(size&0x0f)
+	size >>= 4
+	if size > 0 {
+		first |= 0x80
+	}
 	out = append(out, first)
 	for size > 0 {
 		b := byte(size & 0x7f)
@@ -380,6 +383,26 @@ func (cr *countingReader) Read(p []byte) (int, error) {
 	n, err := cr.R.Read(p)
 	cr.N += n
 	return n, err
+}
+
+func (cr *countingReader) ReadByte() (byte, error) {
+	if reader, ok := cr.R.(io.ByteReader); ok {
+		b, err := reader.ReadByte()
+		if err == nil {
+			cr.N++
+		}
+		return b, err
+	}
+	var one [1]byte
+	n, err := cr.R.Read(one[:])
+	cr.N += n
+	if n == 1 {
+		return one[0], nil
+	}
+	if err == nil {
+		err = io.EOF
+	}
+	return 0, err
 }
 
 // computeDelta produces git-format delta instructions turning src into dst.
@@ -748,8 +771,8 @@ func readHeader(data []byte, off int) (ObjectType, uint64, int, error) {
 	b := data[off]
 	off++
 	typ := ObjectType((b >> 4) & 0x07)
-	size := uint64(b & 0x7f)
-	var shift uint = 7
+	size := uint64(b & 0x0f)
+	var shift uint = 4
 	for b&0x80 != 0 {
 		if off >= len(data) {
 			return 0, 0, 0, errors.New("packfile: truncated header continuation")

@@ -188,6 +188,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
+	case "fetch":
+		if err := cmdFetch(a, args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		printUsage()
 	default:
