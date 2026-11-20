@@ -33,6 +33,30 @@ func TestAdoptAddsVSTodoGitExcludeWithoutDroppingRules(t *testing.T) {
 	}
 }
 
+func TestAddVSTodoExcludeUsesCustomMetadataDirectory(t *testing.T) {
+	gitDir := filepath.Join(t.TempDir(), ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := addVSTodoExclude(gitDir, filepath.Join(".metadata", "vstodo[cache]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected custom metadata exclude rule to be added")
+	}
+	data, err := os.ReadFile(filepath.Join(gitDir, "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "/.metadata/vstodo\\\\[cache\\\\]/") {
+		t.Fatalf("custom metadata path was not escaped and excluded: %q", data)
+	}
+	if strings.Contains(string(data), "/.vstodo/") {
+		t.Fatalf("default metadata path was unexpectedly excluded: %q", data)
+	}
+}
+
 func runGit(t *testing.T, root string, args ...string) string {
 	t.Helper()
 	all := append([]string{"-C", root}, args...)

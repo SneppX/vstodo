@@ -178,7 +178,7 @@ func Adopt(root string) (Report, error) {
 	// Keep VSTodo's private metadata out of ordinary Git status output. This
 	// is deliberately the final source-repository operation so a failed
 	// adoption cannot leave a partially imported VSTodo directory behind.
-	changed, err := addVSTodoExclude(gitDir)
+	changed, err := addVSTodoExclude(gitDir, relativeVSTodoDir)
 	if err != nil {
 		return report, fmt.Errorf("adopt: update Git info/exclude: %w", err)
 	}
@@ -192,9 +192,25 @@ func Adopt(root string) (Report, error) {
 	return report, nil
 }
 
+// gitExcludePattern returns an anchored Git ignore pattern for a metadata directory.
+// Glob metacharacters are escaped so custom VSTODO_DIR values are treated literally.
+func gitExcludePattern(relativePath string) (string, error) {
+	clean := filepath.Clean(relativePath)
+	if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", errors.New("VSTODO_DIR must resolve to a directory inside the Git working tree")
+	}
+	pattern := filepath.ToSlash(clean)
+	pattern = strings.NewReplacer("\\\\", "\\\\\\\\", "*", "\\\\*", "?", "\\\\?", "[", "\\\\[", "]", "\\\\]").Replace(pattern)
+	return "/" + pattern + "/", nil
+}
+
 // addVSTodoExclude preserves existing Git ignore rules and adds a local rule
 // for VSTodo's metadata directory. Symlinks and non-regular files are refused.
-func addVSTodoExclude(gitDir string) (bool, error) {
+func addVSTodoExclude(gitDir, relativeVSTodoDir string) (bool, error) {
+	pattern, err := gitExcludePattern(relativeVSTodoDir)
+	if err != nil {
+		return false, err
+	}
 	infoDir := filepath.Join(gitDir, "info")
 	info, err := os.Lstat(infoDir)
 	createdInfo := false
@@ -233,7 +249,7 @@ func addVSTodoExclude(gitDir string) (bool, error) {
 	}
 	for _, line := range strings.Split(string(original), "\n") {
 		rule := strings.TrimSpace(line)
-		if rule == "/.vstodo/" || rule == ".vstodo/" {
+		if rule == pattern || rule == strings.TrimPrefix(pattern, "/") {
 			success = true
 			return false, nil
 		}
@@ -243,7 +259,7 @@ func addVSTodoExclude(gitDir string) (bool, error) {
 	if len(updated) > 0 && updated[len(updated)-1] != '\n' {
 		updated = append(updated, '\n')
 	}
-	updated = append(updated, []byte("# VSTodo metadata\n/.vstodo/\n")...)
+	updated = append(updated, []byte("# VSTodo metadata\n"+pattern+"\n")...)
 	tmp, err := os.CreateTemp(infoDir, ".vstodo-exclude-*")
 	if err != nil {
 		return false, err
