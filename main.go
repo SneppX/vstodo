@@ -33,6 +33,14 @@ func main() {
 		return
 	}
 
+	if cmd == "adopt" {
+		if err := cmdAdopt(args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if cmd == "clone" {
 		if err := cmdClone(args); err != nil {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
@@ -220,6 +228,7 @@ Core commands:
   demo         Create a sample repository demonstrating VSTodo features
   clone        Clone a repository into a new directory
   init         Initialize a new vstodo repository
+  adopt        Add VSTodo to an existing Git repository without replacing .git
   config       Get and set repository configuration
   add          Add file contents to the staging index
   commit       Record changes to the repository
