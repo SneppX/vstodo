@@ -18,6 +18,7 @@ import (
 	"vstodo/internal/object"
 	"vstodo/internal/packfile"
 	"vstodo/internal/ref"
+	"vstodo/internal/repo"
 	"vstodo/internal/sha1"
 )
 
@@ -55,8 +56,18 @@ func Adopt(root string) (Report, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return report, errors.New("adopt: expected a standard .git directory; linked worktrees and submodules are not supported yet")
 	}
-	if _, err := os.Lstat(filepath.Join(abs, ".vstodo")); err == nil {
-		return report, errors.New("adopt: .vstodo already exists; refusing to overwrite it")
+	vstodoName := os.Getenv(repo.EnvOverride)
+	if vstodoName == "" {
+		vstodoName = repo.DefaultDir
+	}
+	vstodoDir := filepath.Join(abs, vstodoName)
+	relativeVSTodoDir, err := filepath.Rel(abs, vstodoDir)
+	if err != nil || relativeVSTodoDir == "." || relativeVSTodoDir == ".." ||
+		strings.HasPrefix(relativeVSTodoDir, ".."+string(filepath.Separator)) {
+		return report, errors.New("adopt: VSTODO_DIR must resolve inside the Git working tree")
+	}
+	if _, err := os.Lstat(vstodoDir); err == nil {
+		return report, errors.New("adopt: VSTodo metadata directory already exists; refusing to overwrite it")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return report, err
 	}
@@ -171,6 +182,13 @@ func Adopt(root string) (Report, error) {
 
 func importLooseObjects(objectsDir string, a *app.App) (int, error) {
 	count := 0
+	objectInfo, err := os.Lstat(objectsDir)
+	if err != nil {
+		return 0, err
+	}
+	if objectInfo.Mode()&os.ModeSymlink != 0 || !objectInfo.IsDir() {
+		return 0, errors.New("adopt: Git object directory must be a real directory")
+	}
 	entries, err := os.ReadDir(objectsDir)
 	if err != nil {
 		return 0, err
@@ -182,7 +200,15 @@ func importLooseObjects(objectsDir string, a *app.App) (int, error) {
 		if _, err := strconv.ParseUint(dir.Name(), 16, 8); err != nil {
 			continue
 		}
-		files, err := os.ReadDir(filepath.Join(objectsDir, dir.Name()))
+		dirPath := filepath.Join(objectsDir, dir.Name())
+		dirInfo, err := os.Lstat(dirPath)
+		if err != nil {
+			return count, err
+		}
+		if dirInfo.Mode()&os.ModeSymlink != 0 || !dirInfo.IsDir() {
+			return count, fmt.Errorf("adopt: refusing unsafe object directory %s", dirPath)
+		}
+		files, err := os.ReadDir(dirPath)
 		if err != nil {
 			return count, err
 		}
@@ -195,6 +221,13 @@ func importLooseObjects(objectsDir string, a *app.App) (int, error) {
 				continue
 			}
 			path := filepath.Join(objectsDir, dir.Name(), file.Name())
+			fileInfo, err := os.Lstat(path)
+			if err != nil {
+				return count, err
+			}
+			if fileInfo.Mode()&os.ModeSymlink != 0 || !fileInfo.Mode().IsRegular() {
+				return count, fmt.Errorf("adopt: refusing non-regular Git object %s", path)
+			}
 			raw, err := os.ReadFile(path)
 			if err != nil {
 				return count, err
@@ -224,7 +257,15 @@ func importPackfiles(packDir string, a *app.App) (int, error) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".pack") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(packDir, entry.Name()))
+		packPath := filepath.Join(packDir, entry.Name())
+		info, err := os.Lstat(packPath)
+		if err != nil {
+			return count, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return count, fmt.Errorf("adopt: refusing non-regular Git pack %s", packPath)
+		}
+		data, err := os.ReadFile(packPath)
 		if err != nil {
 			return count, err
 		}

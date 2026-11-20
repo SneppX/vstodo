@@ -10,6 +10,7 @@ import (
 	"vstodo/internal/app"
 	"vstodo/internal/config"
 	"vstodo/internal/object"
+	"vstodo/internal/packfile"
 	"vstodo/internal/sha1"
 )
 
@@ -66,6 +67,19 @@ func makeGitRepo(t *testing.T) (string, string) {
 	if err := os.WriteFile(filepath.Join(gitDir, "index"), []byte("git-index-snapshot"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	packedObject := &object.Object{Type: object.BlobType, Data: []byte("packed object payload")}
+	packedObject.ID = object.ComputeID(packedObject.Type, packedObject.Data)
+	packBytes, _, err := packfile.NewPackWriter(packedObject).WritePack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	packDir := filepath.Join(gitDir, "objects", "pack")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "pack-test.pack"), packBytes, 0o444); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("working copy remains unchanged\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +105,7 @@ func TestAdoptPreservesGitAndImportsHistoryAndRemotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.LooseObjects != 3 || report.References != 2 || report.Remotes != 1 || report.Branch != "main" {
+	if report.LooseObjects != 3 || report.PackedObjects != 1 || report.References != 2 || report.Remotes != 1 || report.Branch != "main" {
 		t.Fatalf("unexpected adoption report: %+v", report)
 	}
 	a, err := app.New(root)
@@ -123,6 +137,10 @@ func TestAdoptPreservesGitAndImportsHistoryAndRemotes(t *testing.T) {
 	}
 	if _, err := a.Store.Load(id); err != nil {
 		t.Fatal(err)
+	}
+	packedID := object.ComputeID(object.BlobType, []byte("packed object payload"))
+	if _, err := a.Store.Load(packedID); err != nil {
+		t.Fatalf("packed Git object was not imported: %v", err)
 	}
 
 	configAfter, err := os.ReadFile(filepath.Join(root, ".git", "config"))
