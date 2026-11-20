@@ -44,7 +44,7 @@ func makeGitRepo(t *testing.T) (string, string) {
 	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitConfig := "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\n[user]\n\tname = Git User\n\temail = git@example.test\n\n[remote \"origin\"]\n\turl = https://example.test/team/project.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n\n[branch \"main\"]\n\tremote = origin\n\tmerge = refs/heads/main\n"
+	gitConfig := "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\n[user]\n\tname = Git User\n\temail = git@example.test\n\n[remote \"origin\"]\n\turl = https://example.test/team/project.git\n\tpushurl = https://push.example.test/team/project.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n\n[branch \"main\"]\n\tremote = origin\n\tmerge = refs/heads/main\n\tpushRemote = origin\n"
 	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(gitConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,9 @@ func TestAdoptPreservesGitAndImportsHistoryAndRemotes(t *testing.T) {
 	values := cfg.All()
 	if values["remote.origin.url"] != "https://example.test/team/project.git" ||
 		values["remote.origin.fetch"] != "+refs/heads/*:refs/remotes/origin/*" ||
-		values["branch.main.remote"] != "origin" || values["user.name"] != "Git User" {
+		values["remote.origin.pushurl"] != "https://push.example.test/team/project.git" ||
+		values["branch.main.remote"] != "origin" || values["branch.main.pushremote"] != "origin" ||
+		values["user.name"] != "Git User" {
 		t.Fatalf("Git configuration was not migrated: %#v", values)
 	}
 	id, err := sha1.FromHex(commitID)

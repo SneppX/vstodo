@@ -439,7 +439,7 @@ func importConfig(data []byte, a *app.App) ([]string, error) {
 		}
 		if strings.HasPrefix(section, "branch \"") && strings.HasSuffix(section, "\"") {
 			name := strings.TrimSuffix(strings.TrimPrefix(section, "branch \""), "\"")
-			if name != "" && (key == "remote" || key == "merge" || key == "rebase") {
+			if name != "" && (key == "remote" || key == "merge" || key == "rebase" || key == "pushremote") {
 				if err := cfg.Set("branch."+name+"."+key, value); err != nil {
 					return nil, err
 				}

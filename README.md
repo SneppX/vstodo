@@ -32,7 +32,9 @@ remote-tracking refs, HEAD, remote URLs and fetch settings, branch upstream
 settings, and local user identity. It preserves exact copies of `.git/config`
 and `.git/index` under `.vstodo/migration/`, and does not modify `.git`, the
 working tree, or the Git index. Git remains fully usable during the adoption
-period. Existing staged changes are preserved in the Git index backup but are
+period. VSTodo also imports branch upstream (`remote`/`merge`), branch
+`pushRemote`, and remote `pushurl` settings; default pull and push use those
+settings when present. Existing staged changes are preserved in the Git index backup but are
 not yet represented as VSTodo staged changes; inspect `vstodo status` before
 making VSTodo commits.
 

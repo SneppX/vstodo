@@ -75,3 +75,26 @@ func TestRemoteConfigUsesRepositoryLocalStorage(t *testing.T) {
 		t.Fatalf("reloaded URL = %q", got)
 	}
 }
+
+func TestRemotePushURLPrefersPushURLAndFallsBackToFetchURL(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := remoteConfig(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Set("remote.origin.url", "https://fetch.example.test/repo.git"); err != nil {
+		t.Fatal(err)
+	}
+	if got := remotePushURL(cfg, "origin"); got != "https://fetch.example.test/repo.git" {
+		t.Fatalf("push URL fallback = %q", got)
+	}
+	if err := cfg.Set("remote.origin.pushurl", "https://push.example.test/repo.git"); err != nil {
+		t.Fatal(err)
+	}
+	if got := remotePushURL(cfg, "origin"); got != "https://push.example.test/repo.git" {
+		t.Fatalf("push URL = %q", got)
+	}
+}
