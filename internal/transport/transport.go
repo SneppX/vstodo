@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"vstodo/internal/app"
+	"vstodo/internal/object"
 	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 	"vstodo/internal/storage"
@@ -150,21 +152,58 @@ func checkoutHEAD(a *app.App) error {
 	if err != nil {
 		return fmt.Errorf("checkout HEAD: load commit: %w", err)
 	}
+	if obj.Type != object.CommitType {
+		return fmt.Errorf("checkout HEAD: object %s is %s, not a commit", headID.Hex(), obj.Type)
+	}
 	return writeTreeToWorktree(a, obj.Data)
 }
 
-// writeTreeToWorktree recursively writes the tree at headID into dst's
-// working tree, mirroring checkout semantics.
-func writeTreeToWorktree(a *app.App, data []byte) error {
-	treeID, err := objectTreeID(a, data)
+type worktreeFile struct {
+	path string
+	data []byte
+}
+
+func writeTreeToWorktree(a *app.App, commitData []byte) error {
+	treeID, err := objectTreeID(a, commitData)
 	if err != nil {
 		return err
 	}
-	return writeTreeRecursive(a, treeID, "")
+	files := make([]worktreeFile, 0)
+	seen := make(map[string]bool)
+	if err := collectTreeFiles(a, treeID, nil, &files, seen); err != nil {
+		return err
+	}
+
+	root, err := filepath.EvalSymlinks(a.Repo.Root)
+	if err != nil {
+		return fmt.Errorf("transport: resolve worktree root: %w", err)
+	}
+	for _, file := range files {
+		parts := strings.Split(file.path, "/")
+		parent, err := ensureSafeDirectory(root, parts[:len(parts)-1])
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(parent, parts[len(parts)-1])
+		info, err := os.Lstat(target)
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("transport: refusing to write through symlink %q", file.path)
+			}
+			if info.IsDir() {
+				return fmt.Errorf("transport: file path %q is an existing directory", file.path)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("transport: inspect %q: %w", file.path, err)
+		}
+		if err := os.WriteFile(target, file.data, 0o644); err != nil {
+			return fmt.Errorf("transport: write %q: %w", file.path, err)
+		}
+	}
+	return nil
 }
 
-func objectTreeID(a *app.App, commitData []byte) (sha1.Digest, error) {
-	// parse "tree <hex>" from commit header.
+func objectTreeID(_ *app.App, commitData []byte) (sha1.Digest, error) {
 	idx := -1
 	for i := 0; i+4 < len(commitData); i++ {
 		if commitData[i] == 't' && commitData[i+1] == 'r' && commitData[i+2] == 'e' && commitData[i+3] == 'e' && commitData[i+4] == ' ' {
@@ -190,21 +229,17 @@ func objectTreeID(a *app.App, commitData []byte) (sha1.Digest, error) {
 	return d, nil
 }
 
-func writeTreeRecursive(a *app.App, treeID sha1.Digest, prefix string) error {
+func collectTreeFiles(a *app.App, treeID sha1.Digest, prefix []string, files *[]worktreeFile, seen map[string]bool) error {
 	obj, err := a.Store.Load(treeID)
 	if err != nil {
 		return err
 	}
-	// raw tree: entries "<mode> <name>\0<20-byte id>"
+	if obj.Type != object.TreeType {
+		return fmt.Errorf("transport: tree entry %s points to %s, not a tree", treeID.Hex(), obj.Type)
+	}
 	rest := obj.Data
 	for len(rest) > 0 {
-		nul := -1
-		for i := 0; i < len(rest); i++ {
-			if rest[i] == 0 {
-				nul = i
-				break
-			}
-		}
+		nul := strings.IndexByte(string(rest), 0)
 		if nul < 0 {
 			return errors.New("transport: malformed tree entry")
 		}
@@ -213,42 +248,82 @@ func writeTreeRecursive(a *app.App, treeID sha1.Digest, prefix string) error {
 		if len(rest) < 20 {
 			return errors.New("transport: truncated tree hash")
 		}
-		idBytes := rest[:20]
-		rest = rest[20:]
-		sp := -1
-		for i := 0; i < len(meta); i++ {
-			if meta[i] == ' ' {
-				sp = i
-				break
-			}
+		id, err := sha1.FromBytes(rest[:20])
+		if err != nil {
+			return err
 		}
-		if sp < 0 {
+		rest = rest[20:]
+		sp := strings.IndexByte(string(meta), ' ')
+		if sp <= 0 || sp == len(meta)-1 {
 			return errors.New("transport: malformed tree meta")
 		}
-		mode := string(meta[:sp])
-		name := string(meta[sp+1:])
-		var id sha1.Digest
-		copy(id[:], idBytes)
-
-		fullPath := filepath.Join(prefix, name)
-		if mode == "040000" {
-			if err := os.MkdirAll(filepath.Join(a.Repo.Root, fullPath), 0o755); err != nil {
-				return err
-			}
-			if err := writeTreeRecursive(a, id, fullPath); err != nil {
+		mode, name := string(meta[:sp]), string(meta[sp+1:])
+		if err := validateTreeName(name, prefix, a.Repo.GitDir); err != nil {
+			return err
+		}
+		parts := append(append([]string(nil), prefix...), name)
+		path := strings.Join(parts, "/")
+		isDirectory := mode == "40000" || mode == "040000"
+		if mode != "100644" && mode != "100755" && mode != "120000" && !isDirectory {
+			return fmt.Errorf("transport: unsupported tree mode %q for %q", mode, path)
+		}
+		if _, exists := seen[path]; exists {
+			return fmt.Errorf("transport: duplicate tree path %q", path)
+		}
+		seen[path] = true
+		if isDirectory {
+			if err := collectTreeFiles(a, id, parts, files, seen); err != nil {
 				return err
 			}
 			continue
 		}
-		blobObj, err := a.Store.Load(id)
+		blob, err := a.Store.Load(id)
 		if err != nil {
-			return err
+			return fmt.Errorf("transport: load blob %q: %w", path, err)
 		}
-		if err := os.WriteFile(filepath.Join(a.Repo.Root, fullPath), blobObj.Data, 0o644); err != nil {
-			return err
+		if blob.Type != object.BlobType {
+			return fmt.Errorf("transport: file entry %q points to %s, not a blob", path, blob.Type)
+		}
+		*files = append(*files, worktreeFile{path: path, data: blob.Data})
+	}
+	return nil
+}
+
+func validateTreeName(name string, prefix []string, gitDir string) error {
+	if name == "" || name == "." || name == ".." || filepath.IsAbs(name) ||
+		strings.ContainsAny(name, "/\\:") || filepath.VolumeName(name) != "" {
+		return fmt.Errorf("transport: unsafe tree entry name %q", name)
+	}
+	if len(prefix) == 0 {
+		metadataName := filepath.Base(gitDir)
+		if strings.EqualFold(name, metadataName) || strings.EqualFold(name, ".vstodo") {
+			return fmt.Errorf("transport: tree entry %q targets repository metadata", name)
 		}
 	}
 	return nil
+}
+
+// ensureSafeDirectory creates missing directories one component at a time and
+// rejects symlinks or non-directory components instead of following them.
+func ensureSafeDirectory(root string, components []string) (string, error) {
+	current := root
+	for _, component := range components {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(current, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+				return "", fmt.Errorf("transport: create directory %q: %w", current, err)
+			}
+			info, err = os.Lstat(current)
+		}
+		if err != nil {
+			return "", fmt.Errorf("transport: inspect directory %q: %w", current, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return "", fmt.Errorf("transport: refusing unsafe directory component %q", current)
+		}
+	}
+	return current, nil
 }
 
 // compile-time checks
