@@ -32,11 +32,11 @@ type Report struct {
 }
 
 type manifest struct {
-	SchemaVersion int      `json:"schema_version"`
-	Source        string   `json:"source"`
-	ObjectFormat  string   `json:"object_format"`
-	Branch        string   `json:"branch,omitempty"`
-	Remotes       []string `json:"remotes"`
+	SchemaVersion   int      `json:"schema_version"`
+	Source          string   `json:"source"`
+	ObjectFormat    string   `json:"object_format"`
+	Branch          string   `json:"branch,omitempty"`
+	Remotes         []string `json:"remotes"`
 	GitMetadata     []string `json:"preserved_metadata"`
 	LocalGitChanges []string `json:"local_git_changes,omitempty"`
 }
