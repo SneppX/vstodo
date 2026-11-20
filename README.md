@@ -35,7 +35,7 @@ change is a local `.git/info/exclude` rule for `.vstodo/`, which keeps
 VSTodo's private metadata out of ordinary Git status output. Existing exclude
 rules are preserved. Git objects, refs, config, index, remotes, and working
 files remain unchanged, and Git remains fully usable during the adoption
-period. VSTodo also imports branch upstream (`remote`/`merge`), branch
+period. Use `vstodo export-git` to copy VSTodo-created commits back into the checked-out Git branch without rewriting `.git/config`, `.git/index`, or working files. Git remains usable throughout the transition. VSTodo also imports branch upstream (`remote`/`merge`), branch
 `pushRemote`, and remote `pushurl` settings; default pull and push use those
 settings when present. Existing staged changes are preserved in the Git index backup but are
 not yet represented as VSTodo staged changes; inspect `vstodo status` before

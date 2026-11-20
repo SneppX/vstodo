@@ -201,6 +201,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
+	case "export-git":
+		if err := cmdExportGit(args); err != nil {
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
+			os.Exit(1)
+		}
 	case "push":
 		if err := cmdPush(a, args); err != nil {
 			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
@@ -229,6 +234,7 @@ Core commands:
   clone        Clone a repository into a new directory
   init         Initialize a new vstodo repository
   adopt        Add VSTodo to an existing Git repository without replacing .git
+  export-git   Export VSTodo commits into the adopted Git branch
   config       Get and set repository configuration
   add          Add file contents to the staging index
   commit       Record changes to the repository

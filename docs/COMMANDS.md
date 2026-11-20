@@ -342,3 +342,20 @@ added to Git's local exclude file. Existing exclude rules are preserved.
 Adoption currently requires a standard `.git` directory and SHA-1 object IDs.
 Linked worktrees, submodules, SHA-256 repositories, and object alternates are
 rejected explicitly. Adoption does not transfer or rewrite remote history.
+
+
+## Git interoperability
+
+### export-git
+
+```sh
+vstodo export-git [branch]
+```
+
+Export the current VSTodo branch into the same branch checked out by Git. The
+command writes missing Git-compatible loose objects, verifies existing objects,
+and advances the Git branch through a lock-file compare-and-swap update. It
+refuses detached HEAD, branch mismatches, locked refs, corrupt objects, and
+non-fast-forward history. Run `vstodo adopt` first. The Git index, config,
+working files, remotes, and remote history are not modified; after export, use
+ordinary `git push` when you are ready to publish the new commits.
