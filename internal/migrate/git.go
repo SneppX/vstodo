@@ -5,7 +5,6 @@ package migrate
 import (
 	"bufio"
 	"encoding/json"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
