@@ -24,6 +24,13 @@ func remoteConfig(a *app.App) (*config.Config, error) {
 	return cfg, nil
 }
 
+func remotePushURL(cfg *config.Config, name string) string {
+	if pushURL := cfg.Get("remote." + name + ".pushurl"); pushURL != "" {
+		return pushURL
+	}
+	return cfg.Get("remote." + name + ".url")
+}
+
 func validateRemote(name, rawURL string) error {
 	if !remoteNamePattern.MatchString(name) || strings.Contains(name, "..") {
 		return fmt.Errorf("remote: invalid remote name %q", name)
@@ -53,8 +60,13 @@ func cmdRemote(a *app.App, args []string) error {
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			fmt.Printf("%s\t%s (fetch)\n", name, values["remote."+name+".url"])
-			fmt.Printf("%s\t%s (push)\n", name, values["remote."+name+".url"])
+			fetchURL := values["remote."+name+".url"]
+			pushURL := values["remote."+name+".pushurl"]
+			if pushURL == "" {
+				pushURL = fetchURL
+			}
+			fmt.Printf("%s\t%s (fetch)\n", name, fetchURL)
+			fmt.Printf("%s\t%s (push)\n", name, pushURL)
 		}
 		return nil
 	}

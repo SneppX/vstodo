@@ -42,7 +42,14 @@ func cmdPush(a *app.App, args []string) error {
 	if err != nil {
 		return err
 	}
-	remoteURL := cfg.Get("remote." + remoteName + ".url")
+	if len(args) == 0 {
+		if configured := cfg.Get("branch." + branch + ".pushRemote"); configured != "" {
+			remoteName = configured
+		} else if configured := cfg.Get("branch." + branch + ".remote"); configured != "" {
+			remoteName = configured
+		}
+	}
+	remoteURL := remotePushURL(cfg, remoteName)
 	if remoteURL == "" {
 		return fmt.Errorf("remote: %q does not exist", remoteName)
 	}

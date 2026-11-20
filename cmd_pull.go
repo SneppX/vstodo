@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"vstodo/internal/app"
 	"vstodo/internal/transport"
@@ -35,6 +36,17 @@ func cmdPull(a *app.App, args []string) error {
 	cfg, err := remoteConfig(a)
 	if err != nil {
 		return err
+	}
+	if len(args) == 0 {
+		if upstream := cfg.Get("branch." + currentBranch + ".remote"); upstream != "" {
+			remoteName = upstream
+		}
+		if mergeRef := cfg.Get("branch." + currentBranch + ".merge"); mergeRef != "" {
+			if !strings.HasPrefix(mergeRef, "refs/heads/") {
+				return fmt.Errorf("pull: unsupported upstream merge ref %q", mergeRef)
+			}
+			branch = strings.TrimPrefix(mergeRef, "refs/heads/")
+		}
 	}
 	remoteURL := cfg.Get("remote." + remoteName + ".url")
 	if remoteURL == "" {

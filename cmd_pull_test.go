@@ -62,8 +62,8 @@ func TestCmdPullFetchesAndFastForwardsCurrentBranch(t *testing.T) {
 	remoteCommitID := object.ComputeID(remoteCommit.Type, remoteCommit.Data)
 	packBytes := makeFetchPack(t, remoteBlob, remoteTree, remoteCommit)
 	advertisement := packetLineForFetch("# service=git-upload-pack\n") + "0000" +
-		packetLineForFetch(remoteCommitID.Hex()+" HEAD\x00symref=HEAD:refs/heads/main\n") +
-		packetLineForFetch(remoteCommitID.Hex()+" refs/heads/main\n") + "0000"
+		packetLineForFetch(remoteCommitID.Hex()+" HEAD\x00symref=HEAD:refs/heads/develop\n") +
+		packetLineForFetch(remoteCommitID.Hex()+" refs/heads/develop\n") + "0000"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/repo.git/info/refs":
@@ -79,7 +79,20 @@ func TestCmdPullFetchesAndFastForwardsCurrentBranch(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if err := cmdRemote(a, []string{"add", "origin", server.URL + "/repo.git"}); err != nil {
+	if err := cmdRemote(a, []string{"add", "upstream", server.URL + "/repo.git"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := remoteConfig(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Set("branch.main.remote", "upstream"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Set("branch.main.merge", "refs/heads/develop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdPull(a, nil); err != nil {
@@ -93,7 +106,7 @@ func TestCmdPullFetchesAndFastForwardsCurrentBranch(t *testing.T) {
 	if err != nil || string(data) != "from remote\n" {
 		t.Fatalf("remote.txt = %q, err=%v", data, err)
 	}
-	tracking, err := a.Refs.ReadRef("refs/remotes/origin/main")
+	tracking, err := a.Refs.ReadRef("refs/remotes/upstream/develop")
 	if err != nil || tracking != remoteCommitID {
 		t.Fatalf("tracking ref = %s, err=%v", tracking.Hex(), err)
 	}

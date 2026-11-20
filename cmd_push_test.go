@@ -81,7 +81,20 @@ func TestCmdPushPublishesFastForwardBranch(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if err := cmdRemote(a, []string{"add", "origin", server.URL + "/repo"}); err != nil {
+	if err := cmdRemote(a, []string{"add", "upstream", "https://fetch.example.test/team/repo.git"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := remoteConfig(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Set("remote.upstream.pushurl", server.URL+"/repo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Set("branch.main.pushRemote", "upstream"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdPush(a, nil); err != nil {
@@ -90,7 +103,7 @@ func TestCmdPushPublishesFastForwardBranch(t *testing.T) {
 	if !pushed {
 		t.Fatal("remote did not receive push request")
 	}
-	tracking, err := a.Refs.ReadRef("refs/remotes/origin/main")
+	tracking, err := a.Refs.ReadRef("refs/remotes/upstream/main")
 	if err != nil || tracking != newID {
 		t.Fatalf("tracking ref = %s, err=%v; want %s", tracking.Hex(), err, newID.Hex())
 	}
