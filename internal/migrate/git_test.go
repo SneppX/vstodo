@@ -226,7 +226,6 @@ func TestAdoptRefusesGitAlternatesAndSHA256(t *testing.T) {
 	})
 }
 
-
 func runGit(t *testing.T, root string, args ...string) string {
 	t.Helper()
 	all := append([]string{"-C", root}, args...)

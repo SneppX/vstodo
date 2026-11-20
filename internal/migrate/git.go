@@ -164,7 +164,8 @@ func Adopt(root string) (Report, error) {
 		ObjectFormat:  "sha1",
 		Branch:        report.Branch,
 		Remotes:       remoteNames,
-		GitMetadata:   []string{"config", "index"},
+		GitMetadata:     []string{"config", "index"},
+		LocalGitChanges: []string{"info/exclude"},
 	}
 	manifestBytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
