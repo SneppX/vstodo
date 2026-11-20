@@ -318,3 +318,27 @@ remote-tracking ref into the current local branch. The default remote is
 `origin`; the default source branch is the current branch name. Pull requires
 a clean working tree and preserves fetched objects and remote-tracking refs
 if the merge reports conflicts.
+
+
+## Git adoption
+
+### adopt
+
+```sh
+vstodo adopt [path]
+```
+
+Initialize VSTodo alongside an existing standard Git working tree. Adoption
+imports loose and packed Git objects, branches, tags, symbolic references, and
+remote/upstream configuration into `.vstodo/`. The original `.git` object
+database, refs, config, index, and working files are retained. VSTodo adds only
+a local ignore rule in `.git/info/exclude` so its private metadata is not shown
+as untracked by Git.
+
+The default metadata directory is `.vstodo/`. To use another in-tree
+directory, set `VSTODO_DIR` before running `vstodo adopt`; that exact path is
+added to Git's local exclude file. Existing exclude rules are preserved.
+
+Adoption currently requires a standard `.git` directory and SHA-1 object IDs.
+Linked worktrees, submodules, SHA-256 repositories, and object alternates are
+rejected explicitly. Adoption does not transfer or rewrite remote history.
