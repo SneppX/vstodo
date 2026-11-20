@@ -200,7 +200,7 @@ func gitExcludePattern(relativePath string) (string, error) {
 		return "", errors.New("VSTODO_DIR must resolve to a directory inside the Git working tree")
 	}
 	pattern := filepath.ToSlash(clean)
-	pattern = strings.NewReplacer("\\\\", "\\\\\\\\", "*", "\\\\*", "?", "\\\\?", "[", "\\\\[", "]", "\\\\]").Replace(pattern)
+	pattern = strings.NewReplacer("\\", "\\\\", "*", "\\*", "?", "\\?", "[", "\\[", "]", "\\]").Replace(pattern)
 	return "/" + pattern + "/", nil
 }
 

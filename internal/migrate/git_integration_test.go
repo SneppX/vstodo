@@ -49,7 +49,7 @@ func TestAddVSTodoExcludeUsesCustomMetadataDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "/.metadata/vstodo\\\\[cache\\\\]/") {
+	if !strings.Contains(string(data), "/.metadata/vstodo\\[cache\\]/") {
 		t.Fatalf("custom metadata path was not escaped and excluded: %q", data)
 	}
 	if strings.Contains(string(data), "/.vstodo/") {
