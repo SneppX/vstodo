@@ -42,7 +42,8 @@ type manifest struct {
 }
 
 // Adopt adds a VSTodo repository beside a standard Git .git directory.
-// It never writes to the Git metadata or working tree.
+// It preserves Git objects, refs, config, index, remotes, and working files.
+// The only source-Git metadata change is a local exclude rule for .vstodo/.
 func Adopt(root string) (Report, error) {
 	var report Report
 	abs, err := filepath.Abs(root)
@@ -159,11 +160,11 @@ func Adopt(root string) (Report, error) {
 	}
 
 	m := manifest{
-		SchemaVersion: 1,
-		Source:        ".git",
-		ObjectFormat:  "sha1",
-		Branch:        report.Branch,
-		Remotes:       remoteNames,
+		SchemaVersion:   1,
+		Source:          ".git",
+		ObjectFormat:    "sha1",
+		Branch:          report.Branch,
+		Remotes:         remoteNames,
 		GitMetadata:     []string{"config", "index"},
 		LocalGitChanges: []string{"info/exclude"},
 	}
