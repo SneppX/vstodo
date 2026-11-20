@@ -30,8 +30,11 @@ Run `vstodo adopt` from an existing Git working tree to add VSTodo alongside Git
 The command imports SHA-1 loose objects, Git v2/v3 packfiles, branches, tags,
 remote-tracking refs, HEAD, remote URLs and fetch settings, branch upstream
 settings, and local user identity. It preserves exact copies of `.git/config`
-and `.git/index` under `.vstodo/migration/`, and does not modify `.git`, the
-working tree, or the Git index. Git remains fully usable during the adoption
+and `.git/index` under `.vstodo/migration/`. The only source-Git metadata
+change is a local `.git/info/exclude` rule for `.vstodo/`, which keeps
+VSTodo's private metadata out of ordinary Git status output. Existing exclude
+rules are preserved. Git objects, refs, config, index, remotes, and working
+files remain unchanged, and Git remains fully usable during the adoption
 period. VSTodo also imports branch upstream (`remote`/`merge`), branch
 `pushRemote`, and remote `pushurl` settings; default pull and push use those
 settings when present. Existing staged changes are preserved in the Git index backup but are

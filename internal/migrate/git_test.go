@@ -2,7 +2,9 @@ package migrate
 
 import (
 	"encoding/hex"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,6 +44,12 @@ func makeGitRepo(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(gitDir, "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte("# user ignore rules\n*.local\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	gitConfig := "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\n[user]\n\tname = Git User\n\temail = git@example.test\n\n[remote \"origin\"]\n\turl = https://example.test/team/project.git\n\tpushurl = https://push.example.test/team/project.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n\n[branch \"main\"]\n\tremote = origin\n\tmerge = refs/heads/main\n\tpushRemote = origin\n"
@@ -105,7 +113,7 @@ func TestAdoptPreservesGitAndImportsHistoryAndRemotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.LooseObjects != 3 || report.PackedObjects != 1 || report.References != 2 || report.Remotes != 1 || report.Branch != "main" {
+	if report.LooseObjects != 3 || report.PackedObjects != 1 || report.References != 2 || report.Remotes != 1 || report.Branch != "main" || !report.GitExcludeUpdated {
 		t.Fatalf("unexpected adoption report: %+v", report)
 	}
 	a, err := app.New(root)
@@ -160,6 +168,13 @@ func TestAdoptPreservesGitAndImportsHistoryAndRemotes(t *testing.T) {
 	if string(configAfter) != string(gitConfigBefore) || string(indexAfter) != string(gitIndexBefore) || string(workingAfter) != string(workingBefore) {
 		t.Fatal("adoption modified Git metadata or the working tree")
 	}
+	excludeAfter, err := os.ReadFile(filepath.Join(root, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(excludeAfter), "*.local") || !strings.Contains(string(excludeAfter), "/.vstodo/") {
+		t.Fatalf("Git exclude rules were not preserved and extended: %q", excludeAfter)
+	}
 	for _, name := range []string{"git-config.backup", "git-index.backup"} {
 		if _, err := os.Stat(filepath.Join(root, ".vstodo", "migration", name)); err != nil {
 			t.Fatal(err)
@@ -209,4 +224,100 @@ func TestAdoptRefusesGitAlternatesAndSHA256(t *testing.T) {
 			t.Fatalf("got %v", err)
 		}
 	})
+}
+
+
+func runGit(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	all := append([]string{"-C", root}, args...)
+	cmd := exec.Command("git", all...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestAdoptRealGitPackedDeltaRepository(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("Git CLI is not installed")
+	}
+	_ = git
+	root := t.TempDir()
+	init := exec.Command("git", "init", "--initial-branch=main", root)
+	if out, err := init.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v\n%s", err, out)
+	}
+	runGit(t, root, "config", "user.name", "VSTodo Integration")
+	runGit(t, root, "config", "user.email", "vstodo-integration@example.test")
+	runGit(t, root, "remote", "add", "origin", "https://example.test/team/repo.git")
+	runGit(t, root, "config", "branch.main.remote", "origin")
+	runGit(t, root, "config", "branch.main.merge", "refs/heads/main")
+	runGit(t, root, "config", "branch.main.pushRemote", "origin")
+
+	for revision := 0; revision < 5; revision++ {
+		content := strings.Repeat("stable history line for delta compression\n", 4000)
+		content += fmt.Sprintf("revision marker %d\n", revision)
+		if err := os.WriteFile(filepath.Join(root, "history.txt"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, root, "add", "history.txt")
+		runGit(t, root, "commit", "-m", fmt.Sprintf("history revision %d", revision))
+	}
+	runGit(t, root, "tag", "v1.0")
+	runGit(t, root, "pack-refs", "--all", "--prune")
+	runGit(t, root, "gc", "--aggressive", "--prune=now")
+
+	headBefore := runGit(t, root, "rev-parse", "HEAD")
+	configBefore, err := os.ReadFile(filepath.Join(root, ".git", "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexBefore, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Adopt(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.PackedObjects == 0 {
+		t.Fatalf("expected packed Git objects after gc, report: %+v", report)
+	}
+	if runGit(t, root, "rev-parse", "HEAD") != headBefore {
+		t.Fatal("Git HEAD changed during adoption")
+	}
+	if status := runGit(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("Git working tree should remain clean after adoption, got %q", status)
+	}
+	if runGit(t, root, "show-ref", "--verify", "refs/tags/v1.0") == "" {
+		t.Fatal("Git tag disappeared after adoption")
+	}
+	configAfter, err := os.ReadFile(filepath.Join(root, ".git", "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexAfter, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(configBefore) != string(configAfter) || string(indexBefore) != string(indexAfter) {
+		t.Fatal("adoption changed Git config or index")
+	}
+	a, err := app.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := sha1.FromHex(headBefore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Store.Load(id); err != nil {
+		t.Fatalf("packed HEAD commit was not imported: %v", err)
+	}
+	if _, err := a.Refs.ReadRef("refs/tags/v1.0"); err != nil {
+		t.Fatalf("packed tag was not imported: %v", err)
+	}
 }

@@ -23,11 +23,12 @@ import (
 )
 
 type Report struct {
-	LooseObjects  int
-	PackedObjects int
-	References    int
-	Remotes       int
-	Branch        string
+	LooseObjects      int
+	PackedObjects     int
+	References        int
+	Remotes           int
+	Branch            string
+	GitExcludeUpdated bool
 }
 
 type manifest struct {
@@ -36,7 +37,8 @@ type manifest struct {
 	ObjectFormat  string   `json:"object_format"`
 	Branch        string   `json:"branch,omitempty"`
 	Remotes       []string `json:"remotes"`
-	GitMetadata   []string `json:"preserved_metadata"`
+	GitMetadata     []string `json:"preserved_metadata"`
+	LocalGitChanges []string `json:"local_git_changes,omitempty"`
 }
 
 // Adopt adds a VSTodo repository beside a standard Git .git directory.
@@ -171,13 +173,101 @@ func Adopt(root string) (Report, error) {
 	if err := os.WriteFile(a.Repo.GitPath("migration", "git-adoption.json"), append(manifestBytes, '\n'), 0o644); err != nil {
 		return report, err
 	}
+	// Keep VSTodo's private metadata out of ordinary Git status output. This
+	// is deliberately the final source-repository operation so a failed
+	// adoption cannot leave a partially imported VSTodo directory behind.
+	changed, err := addVSTodoExclude(gitDir)
+	if err != nil {
+		return report, fmt.Errorf("adopt: update Git info/exclude: %w", err)
+	}
 
 	report.LooseObjects = looseCount
 	report.PackedObjects = packedCount
 	report.References = refCount
 	report.Remotes = len(remoteNames)
+	report.GitExcludeUpdated = changed
 	committed = true
 	return report, nil
+}
+
+// addVSTodoExclude preserves existing Git ignore rules and adds a local rule
+// for VSTodo's metadata directory. Symlinks and non-regular files are refused.
+func addVSTodoExclude(gitDir string) (bool, error) {
+	infoDir := filepath.Join(gitDir, "info")
+	info, err := os.Lstat(infoDir)
+	createdInfo := false
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Mkdir(infoDir, 0o700); err != nil {
+			return false, err
+		}
+		createdInfo = true
+	} else if err != nil {
+		return false, err
+	} else if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return false, errors.New("Git info path must be a real directory")
+	}
+	success := false
+	defer func() {
+		if createdInfo && !success {
+			_ = os.Remove(infoDir)
+		}
+	}()
+
+	excludePath := filepath.Join(infoDir, "exclude")
+	mode := os.FileMode(0o644)
+	var original []byte
+	fileInfo, err := os.Lstat(excludePath)
+	if err == nil {
+		if fileInfo.Mode()&os.ModeSymlink != 0 || !fileInfo.Mode().IsRegular() {
+			return false, errors.New("Git info/exclude must be a regular file")
+		}
+		mode = fileInfo.Mode().Perm()
+		original, err = os.ReadFile(excludePath)
+		if err != nil {
+			return false, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	for _, line := range strings.Split(string(original), "\n") {
+		rule := strings.TrimSpace(line)
+		if rule == "/.vstodo/" || rule == ".vstodo/" {
+			success = true
+			return false, nil
+		}
+	}
+
+	updated := append([]byte(nil), original...)
+	if len(updated) > 0 && updated[len(updated)-1] != '\n' {
+		updated = append(updated, '\n')
+	}
+	updated = append(updated, []byte("# VSTodo metadata\n/.vstodo/\n")...)
+	tmp, err := os.CreateTemp(infoDir, ".vstodo-exclude-*")
+	if err != nil {
+		return false, err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return false, err
+	}
+	if _, err := tmp.Write(updated); err != nil {
+		_ = tmp.Close()
+		return false, err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return false, err
+	}
+	if err := tmp.Close(); err != nil {
+		return false, err
+	}
+	if err := os.Rename(tmpName, excludePath); err != nil {
+		return false, err
+	}
+	success = true
+	return true, nil
 }
 
 func importLooseObjects(objectsDir string, a *app.App) (int, error) {
