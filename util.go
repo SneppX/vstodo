@@ -11,6 +11,7 @@ import (
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
+	"vstodo/internal/repo"
 	"vstodo/internal/sha1"
 	"vstodo/internal/tree"
 )
@@ -48,6 +49,16 @@ func writeFilesFromIndex(a *app.App) error {
 // walkFiles returns all regular files under root, relative paths.
 func walkFiles(root string) ([]string, error) {
 	var out []string
+	metadataDir := os.Getenv(repo.EnvOverride)
+	if metadataDir == "" {
+		metadataDir = repo.DefaultDir
+	}
+	metadataPath := filepath.Join(root, metadataDir)
+	metadataRel, relErr := filepath.Rel(root, metadataPath)
+	excludeMetadata := relErr == nil && metadataRel != "." && metadataRel != ".." &&
+		!strings.HasPrefix(metadataRel, ".."+string(filepath.Separator)) && !filepath.IsAbs(metadataRel)
+	metadataRel = filepath.ToSlash(filepath.Clean(metadataRel))
+
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -60,7 +71,10 @@ func walkFiles(root string) ([]string, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if strings.HasPrefix(rel, ".vstodo/") || rel == ".vstodo" || strings.HasPrefix(rel, ".git/") || rel == ".git" {
+		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
+			return nil
+		}
+		if excludeMetadata && (rel == metadataRel || strings.HasPrefix(rel, metadataRel+"/")) {
 			return nil
 		}
 		out = append(out, rel)
