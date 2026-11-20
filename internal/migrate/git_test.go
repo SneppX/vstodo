@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"vstodo/internal/app"
+	"vstodo/internal/config"
 	"vstodo/internal/object"
+	"vstodo/internal/sha1"
 )
 
 func writeGitObject(t *testing.T, gitDir string, typ object.Type, data []byte) string {
@@ -32,7 +34,6 @@ func makeGitRepo(t *testing.T) (string, string) {
 	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(config), 0o644); err != nil { t.Fatal(err) }
 	blobID := writeGitObject(t, gitDir, object.BlobType, []byte("tracked file\n"))
 	treeData := []byte("100644 file.txt\x00")
-	for i := 0; i < len(blobID); i += 2 { }
 	blobBytes := make([]byte, 20)
 	for i := 0; i < 20; i++ {
 		var v byte

@@ -35,7 +35,7 @@ func main() {
 
 	if cmd == "adopt" {
 		if err := cmdAdopt(args); err != nil {
-			fmt.Fprintf(os.Stderr, "vstodo: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "vstodo: %v\n", err)
 			os.Exit(1)
 		}
 		return
