@@ -23,6 +23,7 @@ import (
 )
 
 type Report struct {
+	MetadataDir       string
 	LooseObjects      int
 	PackedObjects     int
 	References        int
@@ -183,6 +184,7 @@ func Adopt(root string) (Report, error) {
 		return report, fmt.Errorf("adopt: update Git info/exclude: %w", err)
 	}
 
+	report.MetadataDir = filepath.ToSlash(relativeVSTodoDir)
 	report.LooseObjects = looseCount
 	report.PackedObjects = packedCount
 	report.References = refCount

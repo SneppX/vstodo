@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"vstodo/internal/app"
+	"vstodo/internal/repo"
 	"vstodo/internal/sha1"
 )
 
@@ -54,6 +55,27 @@ func TestAddVSTodoExcludeUsesCustomMetadataDirectory(t *testing.T) {
 	}
 	if strings.Contains(string(data), "/.vstodo/") {
 		t.Fatalf("default metadata path was unexpectedly excluded: %q", data)
+	}
+}
+
+func TestAdoptReportsCustomMetadataDirectory(t *testing.T) {
+	root, _ := makeGitRepo(t)
+	customDir := filepath.Join(".metadata", "vstodo")
+	t.Setenv(repo.EnvOverride, customDir)
+
+	report, err := Adopt(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.MetadataDir != filepath.ToSlash(customDir) {
+		t.Fatalf("reported metadata directory %q, want %q", report.MetadataDir, filepath.ToSlash(customDir))
+	}
+	exclude, err := os.ReadFile(filepath.Join(root, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(exclude), "/.metadata/vstodo/") {
+		t.Fatalf("custom metadata directory missing from Git exclude: %q", exclude)
 	}
 }
 

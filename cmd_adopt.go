@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"vstodo/internal/migrate"
 )
@@ -23,11 +24,11 @@ func cmdAdopt(args []string) error {
 	if report.Branch != "" {
 		fmt.Printf("Current branch: %s\n", report.Branch)
 	}
-	fmt.Println("Git config and index snapshots are preserved under .vstodo/migration/.")
+	fmt.Printf("Git config and index snapshots are preserved under %s/migration/.\n", filepath.ToSlash(report.MetadataDir))
 	if report.GitExcludeUpdated {
-		fmt.Println("Added /.vstodo/ to .git/info/exclude; existing ignore rules were preserved.")
+		fmt.Printf("Added /%s/ to .git/info/exclude; existing ignore rules were preserved.\n", filepath.ToSlash(report.MetadataDir))
 	} else {
-		fmt.Println("The /.vstodo/ Git exclude rule was already present.")
+		fmt.Printf("The /%s/ Git exclude rule was already present.\n", filepath.ToSlash(report.MetadataDir))
 	}
 	fmt.Println("Git objects, refs, config, index, remotes, and working files remain intact.")
 	return nil
