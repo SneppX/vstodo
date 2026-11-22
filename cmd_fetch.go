@@ -10,7 +10,6 @@ import (
 
 	"vstodo/internal/app"
 	"vstodo/internal/object"
-	"vstodo/internal/packfile"
 	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 	"vstodo/internal/transport"
@@ -106,18 +105,9 @@ func fetchRemote(a *app.App, name, remoteURL string) error {
 	if err != nil {
 		return err
 	}
-	pack, err := packfile.ReadPack(packBytes)
+	count, err := a.Store.StorePack(packBytes)
 	if err != nil {
-		return fmt.Errorf("remote: parse received pack: %w", err)
-	}
-	for _, packed := range pack.Objects {
-		id, err := a.Store.Store(&object.Object{Type: packed.Type, Data: packed.Data})
-		if err != nil {
-			return fmt.Errorf("remote: store object %s: %w", packed.ID.Hex(), err)
-		}
-		if id != packed.ID {
-			return fmt.Errorf("remote: object identity mismatch: pack has %s, storage computed %s", packed.ID.Hex(), id.Hex())
-		}
+		return fmt.Errorf("remote: persist received pack: %w", err)
 	}
 	for _, fetched := range tracking {
 		if err := a.Refs.UpdateRef(fetched.name, fetched.expected, fetched.id); err != nil {
@@ -129,7 +119,7 @@ func fetchRemote(a *app.App, name, remoteURL string) error {
 			return fmt.Errorf("remote: update remote HEAD (changed concurrently; retry fetch): %w", err)
 		}
 	}
-	fmt.Printf("Fetched %d objects from %s\n", len(pack.Objects), name)
+	fmt.Printf("Fetched %d objects from %s\n", count, name)
 	return nil
 }
 

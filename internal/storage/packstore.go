@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -19,15 +20,17 @@ import (
 // immutably under objects/pack. Pack files are published before their indexes;
 // an incomplete pair is therefore ignored by readers.
 type PackStore struct {
-	Loose    *LooseStore
-	PacksDir string
-	mu       sync.Mutex
-	cache    map[string]*packfile.Pack
+	Loose      *LooseStore
+	ObjectsDir string
+	PacksDir   string
+
+	mu    sync.Mutex
+	cache map[string]*packfile.Pack
 }
 
 // NewPackStore creates a pack-aware store around an existing loose store.
 func NewPackStore(loose *LooseStore, packsDir string) *PackStore {
-	return &PackStore{Loose: loose, PacksDir: packsDir, cache: make(map[string]*packfile.Pack)}
+	return &PackStore{Loose: loose, ObjectsDir: loose.ObjectsDir, PacksDir: packsDir, cache: make(map[string]*packfile.Pack)}
 }
 
 // Store preserves the normal append-only loose-object write path.
@@ -36,6 +39,86 @@ func (s *PackStore) Store(obj *object.Object) (sha1.Digest, error) {
 		return sha1.Zero, errors.New("storage: pack store has no loose store")
 	}
 	return s.Loose.Store(obj)
+}
+
+// WriteRaw stores raw object payload as a loose object.
+func (s *PackStore) WriteRaw(typ object.Type, data []byte) (sha1.Digest, error) {
+	if s == nil || s.Loose == nil {
+		return sha1.Zero, errors.New("storage: pack store has no loose store")
+	}
+	return s.Loose.WriteRaw(typ, data)
+}
+
+// Objects enumerates loose objects. Packed objects are intentionally excluded
+// so loose-only garbage collection never mistakes immutable packs for loose files.
+func (s *PackStore) Objects() ([]sha1.Digest, error) {
+	if s == nil || s.Loose == nil {
+		return nil, errors.New("storage: pack store has no loose store")
+	}
+	return s.Loose.Objects()
+}
+
+// AllObjects enumerates loose and indexed packed objects in stable order.
+func (s *PackStore) AllObjects() ([]sha1.Digest, error) {
+	ids, err := s.Objects()
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[sha1.Digest]struct{}, len(ids))
+	for _, id := range ids {
+		seen[id] = struct{}{}
+	}
+	entries, err := os.ReadDir(s.PacksDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("storage: enumerate pack indexes: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".idx") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(s.PacksDir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		idx, err := packfile.ReadIndex(data)
+		if err != nil {
+			return nil, fmt.Errorf("storage: invalid pack index %s: %w", entry.Name(), err)
+		}
+		for _, id := range idx.IDs {
+			seen[id] = struct{}{}
+		}
+	}
+	out := make([]sha1.Digest, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Hex() < out[j].Hex() })
+	return out, nil
+}
+
+// ReadRaw returns the compressed object representation, whether the object
+// is loose or packed.
+func (s *PackStore) ReadRaw(id sha1.Digest) ([]byte, error) {
+	if s == nil || s.Loose == nil {
+		return nil, errors.New("storage: pack store has no loose store")
+	}
+	raw, err := s.Loose.ReadRaw(id)
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		return raw, err
+	}
+	obj, err := s.Load(id)
+	if err != nil {
+		return nil, err
+	}
+	return object.Compress(obj.Type, obj.Data)
+}
+
+// StoreRaw validates and stores a compressed object in the loose store.
+func (s *PackStore) StoreRaw(id sha1.Digest, raw []byte) error {
+	if s == nil || s.Loose == nil {
+		return errors.New("storage: pack store has no loose store")
+	}
+	return s.Loose.StoreRaw(id, raw)
 }
 
 // StorePack validates and durably publishes a Git pack and its v2 index.
