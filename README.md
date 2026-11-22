@@ -9,6 +9,7 @@ VSTodo is an independent version control system inspired by Git. Its goal is to 
 The long-term vision is to build a complete version control ecosystem.
 
 - Repository management
+- Read-only object and reference integrity verification (`vstodo fsck`)
 - File tracking and staging
 - Commits and history
 - Branching and merging
@@ -73,8 +74,11 @@ interoperability coverage is still in progress.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and pull request instructions.
 
 ## License
+
 VSTodo is licensed under the [MIT License](LICENSE).
+
 ---
+
 **VSTodo — Version control, built differently.**
 
 
