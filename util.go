@@ -28,24 +28,6 @@ func readBlob(a *app.App, id sha1.Digest) ([]byte, error) {
 	return obj.Data, nil
 }
 
-// writeFileFromIndex writes all staged files from the index into the working tree.
-func writeFilesFromIndex(a *app.App) error {
-	for path, id := range a.Index.Entries() {
-		data, err := readBlob(a, id)
-		if err != nil {
-			return err
-		}
-		full := a.Repo.Path(path)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(full, data, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // walkFiles returns all regular files under root, relative paths.
 func walkFiles(root string) ([]string, error) {
 	var out []string
@@ -246,9 +228,3 @@ func removeFile(a *app.App, rel string) error {
 	}
 	return nil
 }
-
-// isTracked reports whether rel is in the index.
-func isTracked(a *app.App, rel string) bool { return a.Index.Contains(rel) }
-
-// stagedDigest returns the staged digest for rel or Zero.
-func stagedDigest(a *app.App, rel string) sha1.Digest { return a.Index.Get(rel) }
