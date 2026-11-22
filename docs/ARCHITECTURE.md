@@ -80,7 +80,7 @@ zlib-compressed and stored at `.vstodo/objects/<first 2 hex>/<remaining 38 hex>`
 ├── HEAD                     # symbolic ref: ref: refs/heads/main
 ├── config                   # repository config
 ├── description              # repository description
-├── index                    # staging area (text: <hex>\t<path>)
+├── index                    # Git DIRC v2 binary staging index
 ├── objects/                 # content-addressed object store
 │   └── <2-hex>/             # loose object directories
 │       └── <38-hex>         # zlib-compressed object file
@@ -95,16 +95,13 @@ no-op from an addressing perspective.
 
 ## Index
 
-The index is `vstodo`'s staging area. It maps working-tree paths to staged
-blob digests. It is stored as a simple line-oriented text file:
-
-```
-<40-hex digest>\t<relative path>
-```
-
-One line per staged file. This format is intentionally trivial to read, write,
-edit by hand, and diff — unlike Git's binary index format. Blank lines and
-lines starting with `#` are ignored.
+The index is `vstodo`'s staging area. It reads and writes Git index version 2
+(`DIRC`) files, including the entry checksum, file modes, and optional
+extension framing. Legacy VSTodo line-oriented indexes remain readable and are
+converted to DIRC format on the next save. Index writes use an exclusive
+sibling `.lock` file and atomic publication. Each loaded index retains its
+original bytes; a save rejects a stale snapshot rather than overwriting another
+process's newer staging state.
 
 ## Refs
 
@@ -132,10 +129,12 @@ Reading a ref follows symbolic pointers recursively.
 | Commit format | `tree`/`parent`/`author`/`committer`/blank/message | same |
 | Tree entry | `<mode> <name>\0<20 bytes>` | same |
 
-Because `vstodo` reuses Git's object formats byte-for-byte, a `vstodo` repository's
-`.vstodo/objects` is, for the core object types, a valid Git object store. The
-main divergence is the index (text vs binary) and the absence of packfiles,
-reflog, and the full Git configuration/hook ecosystem.
+Because `vstodo` reuses Git's object formats byte-for-byte, a VSTodo repository's
+loose objects are compatible with Git's core object model. VSTodo currently
+uses SHA-1 object IDs and expands received packfiles into its loose-object
+store. It does not yet implement Git's complete configuration, hooks, reflog,
+packed-refs, or every index extension and transport capability. Compatibility
+is substantial but is not yet complete.
 
 ## Command families
 

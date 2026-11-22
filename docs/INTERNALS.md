@@ -186,41 +186,53 @@ Git repository as `.git/objects` (ignoring packfiles).
 
 ## How a commit is created
 
-1. Blobs are created for each file's content (`object.ComputeID(BlobType, data)`,
-   then `store.Store`).
-2. A tree object is built from path→blob mappings (`tree.Build`, then hashed and
-   stored).
-3. A commit object is built referencing that tree and its parent(s)
-   (`commit.Build`, then hashed and stored).
-4. The current branch ref is updated to the new commit digest.
-5. HEAD is pointed at the branch (or set directly for detached HEAD).
-6. The index is cleared/reset to match the new tree.
+1. Blobs are created for each file's content and stored by their content ID.
+2. A tree object is built from the staged path-to-blob mapping and stored.
+3. A commit object is built with the tree, current parent (if any), identities,
+   timestamps, and message, then stored.
+4. The current index snapshot is persisted before publishing the new tip.
+5. The current branch ref (or `HEAD`) is updated with compare-and-swap
+   semantics while holding its sibling `.lock` file. If the expected old
+   value changed, the commit is not published to the ref. The new objects are
+   then unreachable and can later be reclaimed by garbage collection.
 
 ## The index format
 
-`.vstodo/index` is line-oriented text:
+`.vstodo/index` uses Git's binary index version 2 format (`DIRC`). It contains
+a version header, entry count, stat metadata, file mode, object ID, path and
+entry flags, eight-byte entry padding, and a trailing SHA-1 checksum. VSTodo
+preserves executable file modes and validates the checksum, entry boundaries,
+and extension framing. Optional extensions are skipped; unsupported mandatory
+extensions and non-stage-zero conflict entries are rejected.
 
-```
-<40-hex blob digest>\t<relative path>
-```
-
-One line per staged file. Blank lines and `#` comments are skipped. There is no
-binary header, no checksum, no entry count, and no extension blocks. This makes
-the index trivial to parse, regenerate, and hand-edit, at the cost of lookup
-being O(n) over file contents rather than O(log n) over a packed index. For the
-project's scope this is an intentional simplicity win (see `docs/COMPARISON.md`).
+Older VSTodo text indexes remain readable for migration. The next successful
+save writes the Git-compatible DIRC v2 representation. Saves acquire
+`.vstodo/index.lock`, compare the on-disk bytes with the snapshot originally
+loaded, and atomically publish only if the snapshot is still current. A stale
+writer receives `index.ErrConcurrentUpdate` instead of silently discarding
+another process's staged changes.
 
 ## The refs format
 
 Refs are plain text files:
 
-- `.vstodo/HEAD` — either `ref: refs/heads/main\n` (symbolic) or `<40-hex>\n`
-  (detached).
+- `.vstodo/HEAD` — either `ref: refs/heads/main\n` (symbolic) or
+  `<40-hex>\n` (detached).
 - `.vstodo/refs/heads/<name>` — `<40-hex>\n`.
 - `.vstodo/refs/tags/<name>` — `<40-hex>\n`.
 
-Reading a ref follows `ref: ` pointers recursively. There is no packed-refs
-file, no reflog, and no transactional ref updates.
+Reference writes use an exclusive sibling `.lock` file. The lock contents are
+synced and renamed into place only after a complete write. The commit path uses
+`ref.Store.UpdateRef` to compare the current direct ref with the expected old
+digest while holding that lock. This prevents a stale commit from silently
+replacing a newer branch tip. A lock already owned by another process is
+reported as a conflict; VSTodo does not automatically delete stale-looking
+locks because doing so could destroy a live writer's transaction.
+
+The lockfile implementation syncs file contents before rename, but does not
+currently sync the containing directory. It therefore improves atomicity and
+crash safety without claiming full power-loss durability on every filesystem.
+There is no packed-refs file or reflog yet.
 
 ## Walk / graph traversal
 
@@ -237,5 +249,5 @@ core.
 - Object content on disk = zlib-deflate of the serialized object.
 - Objects are immutable; addresses are content-based and collision-resistant
   (within SHA-1's bounds).
-- Index is `<hex>\t<path>` text, one line per staged path.
-- Refs are text files holding either `ref: <target>` or a 40-hex digest.
+- Index is Git DIRC v2 with a trailing SHA-1 checksum and stale-snapshot protection.
+- Refs are text files holding either `ref: <target>` or a 40-hex digest; locked updates and commit compare-and-swap prevent lost branch-tip updates.
