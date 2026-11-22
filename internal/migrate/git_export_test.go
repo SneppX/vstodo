@@ -236,10 +236,6 @@ func TestSyncGitFastForwardsVSTodoAndPreservesGitState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gitIndexBefore, err := os.ReadFile(filepath.Join(root, ".git", "index"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	vstodoIndexPath := filepath.Join(root, ".vstodo", "index")
 	vstodoIndexBefore, _ := os.ReadFile(vstodoIndexPath)
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("new Git-side commit\n"), 0o644); err != nil {
@@ -247,6 +243,10 @@ func TestSyncGitFastForwardsVSTodoAndPreservesGitState(t *testing.T) {
 	}
 	runGit(t, root, "add", "README.md")
 	runGit(t, root, "commit", "-m", "Git-side commit after adoption")
+	gitIndexBefore, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	gitHead := runGit(t, root, "rev-parse", "HEAD")
 	workingBefore, err := os.ReadFile(filepath.Join(root, "README.md"))
 	if err != nil {
