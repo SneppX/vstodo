@@ -2,6 +2,7 @@ package index
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,5 +107,34 @@ func TestIndexSaveHonorsExistingLock(t *testing.T) {
 	}
 	if !bytes.Equal(got, original) {
 		t.Fatalf("existing index was modified: %q", got)
+	}
+}
+
+func TestIndexSaveRejectsStaleSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index")
+	first := NewIndex(path)
+	second := NewIndex(path)
+	if err := first.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Load(); err != nil {
+		t.Fatal(err)
+	}
+
+	first.Add("first.txt", object.HashBlob([]byte("first")))
+	if err := first.Save(); err != nil {
+		t.Fatalf("first Save: %v", err)
+	}
+	second.Add("second.txt", object.HashBlob([]byte("second")))
+	if err := second.Save(); !errors.Is(err, ErrConcurrentUpdate) {
+		t.Fatalf("stale Save error = %v, want ErrConcurrentUpdate", err)
+	}
+
+	loaded := NewIndex(path)
+	if err := loaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Contains("first.txt") || loaded.Contains("second.txt") {
+		t.Fatalf("stale writer changed the index: entries = %v", loaded.Entries())
 	}
 }

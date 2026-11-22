@@ -7,6 +7,7 @@ import (
 	"bytes"
 	cryptoSHA1 "crypto/sha1"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -22,11 +23,16 @@ const (
 	defaultMode    = uint32(0100644)
 )
 
+// ErrConcurrentUpdate indicates the on-disk index changed after this instance loaded it.
+var ErrConcurrentUpdate = errors.New("index changed since it was loaded")
+
 // Index maps repository-relative paths to staged blob digests.
 type Index struct {
-	entries map[string]sha1.Digest
-	modes   map[string]uint32
-	path    string
+	entries  map[string]sha1.Digest
+	modes    map[string]uint32
+	path     string
+	snapshot []byte
+	loaded   bool
 }
 
 func NewIndex(path string) *Index {
@@ -34,6 +40,7 @@ func NewIndex(path string) *Index {
 		entries: make(map[string]sha1.Digest),
 		modes:   make(map[string]uint32),
 		path:    path,
+		loaded:  true,
 	}
 }
 
@@ -41,6 +48,10 @@ func (idx *Index) Load() error {
 	data, err := os.ReadFile(idx.path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			idx.entries = make(map[string]sha1.Digest)
+			idx.modes = make(map[string]uint32)
+			idx.snapshot = nil
+			idx.loaded = true
 			return nil
 		}
 		return err
@@ -48,9 +59,16 @@ func (idx *Index) Load() error {
 	idx.entries = make(map[string]sha1.Digest)
 	idx.modes = make(map[string]uint32)
 	if len(data) >= 4 && string(data[:4]) == indexSignature {
-		return idx.loadBinary(data)
+		err = idx.loadBinary(data)
+	} else {
+		err = idx.loadLegacyText(data)
 	}
-	return idx.loadLegacyText(data)
+	if err != nil {
+		return err
+	}
+	idx.snapshot = append(idx.snapshot[:0], data...)
+	idx.loaded = true
+	return nil
 }
 
 func (idx *Index) loadLegacyText(data []byte) error {
@@ -190,7 +208,24 @@ func (idx *Index) Save() error {
 		return err
 	}
 	defer lock.Close()
-	return lock.Commit(buf.Bytes())
+
+	current, err := os.ReadFile(idx.path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if os.IsNotExist(err) {
+		current = nil
+	}
+	if !idx.loaded || !bytes.Equal(current, idx.snapshot) {
+		return ErrConcurrentUpdate
+	}
+	data := buf.Bytes()
+	if err := lock.Commit(data); err != nil {
+		return err
+	}
+	idx.snapshot = append(idx.snapshot[:0], data...)
+	idx.loaded = true
+	return nil
 }
 
 func (idx *Index) Add(path string, d sha1.Digest) {
