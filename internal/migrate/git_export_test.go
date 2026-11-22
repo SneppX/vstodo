@@ -213,7 +213,6 @@ func TestExportGitReportsAlreadyUpToDate(t *testing.T) {
 	}
 }
 
-
 func TestInspectGitReportsSynchronizedBranchWithoutMutation(t *testing.T) {
 	root := makeRealGitRepoForExport(t)
 	if _, err := Adopt(root); err != nil {
