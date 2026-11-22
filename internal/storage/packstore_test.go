@@ -87,3 +87,26 @@ func TestPackStoreHasReturnsFalseForMissingObject(t *testing.T) {
 		t.Fatal("Has returned true for missing object")
 	}
 }
+
+func TestPackStoreDoesNotRetainPacksAboveCacheBudget(t *testing.T) {
+	root := t.TempDir()
+	packsDir := filepath.Join(root, "objects", "pack")
+	want := &object.Object{Type: object.BlobType, Data: []byte("larger than cache budget")}
+	writer := packfile.NewPackWriter(want)
+	packBytes, _, err := writer.WritePack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewPackStore(NewLooseStore(filepath.Join(root, "objects")), packsDir)
+	store.maxCacheBytes = 1
+	if _, err := store.StorePack(packBytes); err != nil {
+		t.Fatal(err)
+	}
+	id := object.ComputeID(want.Type, want.Data)
+	if _, err := store.Load(id); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.cache) != 0 {
+		t.Fatalf("decoded pack cache retained %d entries above its byte budget", len(store.cache))
+	}
+}
