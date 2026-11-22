@@ -28,12 +28,13 @@ type PackStore struct {
 
 	mu            sync.Mutex
 	cache         map[string]*packfile.Pack
+	indexCache    map[string]*packfile.PackIndex
 	maxCacheBytes uint64
 }
 
 // NewPackStore creates a pack-aware store around an existing loose store.
 func NewPackStore(loose *LooseStore, packsDir string) *PackStore {
-	return &PackStore{Loose: loose, ObjectsDir: loose.ObjectsDir, PacksDir: packsDir, cache: make(map[string]*packfile.Pack), maxCacheBytes: maxCachedPackBytes}
+	return &PackStore{Loose: loose, ObjectsDir: loose.ObjectsDir, PacksDir: packsDir, cache: make(map[string]*packfile.Pack), indexCache: make(map[string]*packfile.PackIndex), maxCacheBytes: maxCachedPackBytes}
 }
 
 // Store preserves the normal append-only loose-object write path.
@@ -244,6 +245,34 @@ func (s *PackStore) findPack(id sha1.Digest) (*packfile.Pack, error) {
 	return pack, nil
 }
 
+// loadPackIndex returns a parsed immutable index, caching successful reads.
+func (s *PackStore) loadPackIndex(path string) (*packfile.PackIndex, error) {
+	s.mu.Lock()
+	if idx := s.indexCache[path]; idx != nil {
+		s.mu.Unlock()
+		return idx, nil
+	}
+	s.mu.Unlock()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("storage: read pack index %s: %w", path, err)
+	}
+	idx, err := packfile.ReadIndex(data)
+	if err != nil {
+		return nil, fmt.Errorf("storage: invalid pack index %s: %w", path, err)
+	}
+
+	s.mu.Lock()
+	if existing := s.indexCache[path]; existing != nil {
+		idx = existing
+	} else {
+		s.indexCache[path] = idx
+	}
+	s.mu.Unlock()
+	return idx, nil
+}
+
 func (s *PackStore) findPackIndex(id sha1.Digest) (string, *packfile.PackIndex, error) {
 	entries, err := os.ReadDir(s.PacksDir)
 	if err != nil {
@@ -257,13 +286,9 @@ func (s *PackStore) findPackIndex(id sha1.Digest) (string, *packfile.PackIndex, 
 			continue
 		}
 		path := filepath.Join(s.PacksDir, entry.Name())
-		data, err := os.ReadFile(path)
+		idx, err := s.loadPackIndex(path)
 		if err != nil {
-			return "", nil, fmt.Errorf("storage: read pack index %s: %w", path, err)
-		}
-		idx, err := packfile.ReadIndex(data)
-		if err != nil {
-			return "", nil, fmt.Errorf("storage: invalid pack index %s: %w", path, err)
+			return "", nil, err
 		}
 		if _, ok := idx.Find(id); ok {
 			return path, idx, nil

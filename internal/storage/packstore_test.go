@@ -110,3 +110,28 @@ func TestPackStoreDoesNotRetainPacksAboveCacheBudget(t *testing.T) {
 		t.Fatalf("decoded pack cache retained %d entries above its byte budget", len(store.cache))
 	}
 }
+
+func TestPackStoreCachesParsedPackIndexes(t *testing.T) {
+	root := t.TempDir()
+	packsDir := filepath.Join(root, "objects", "pack")
+	want := &object.Object{Type: object.BlobType, Data: []byte("cached pack index")}
+	packBytes, _, err := packfile.NewPackWriter(want).WritePack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewPackStore(NewLooseStore(filepath.Join(root, "objects")), packsDir)
+	if _, err := store.StorePack(packBytes); err != nil {
+		t.Fatal(err)
+	}
+	id := object.ComputeID(want.Type, want.Data)
+	for i := 0; i < 2; i++ {
+		ok, err := store.Has(id)
+		if err != nil || !ok {
+			t.Fatalf("Has(%s) = %v, %v", id.Hex(), ok, err)
+		}
+	}
+	if len(store.indexCache) != 1 {
+		t.Fatalf("parsed index cache contains %d entries, want 1", len(store.indexCache))
+	}
+}
+
