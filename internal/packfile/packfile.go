@@ -952,6 +952,40 @@ const idxMagic = "\377tOc"
 
 // WriteIndex serializes a PackIndex to .idx v2 bytes.
 func WriteIndex(idx *PackIndex) ([]byte, error) {
+	if idx == nil {
+		return nil, errors.New("packfile: nil index")
+	}
+	if idx.Version != 2 {
+		return nil, fmt.Errorf("packfile: unsupported idx version %d", idx.Version)
+	}
+	if len(idx.IDs) != len(idx.CRCs) || len(idx.IDs) != len(idx.Offsets) {
+		return nil, errors.New("packfile: index ID, CRC, and offset counts differ")
+	}
+	if computeFanout(idx.IDs) != idx.Fanout {
+		return nil, errors.New("packfile: fan-out table does not match object IDs")
+	}
+	for i := 1; i < len(idx.IDs); i++ {
+		if bytes.Compare(idx.IDs[i-1][:], idx.IDs[i][:]) >= 0 {
+			return nil, errors.New("packfile: object IDs must be strictly sorted")
+		}
+	}
+	usedLarge := make([]bool, len(idx.LargeOffsets))
+	for _, offset := range idx.Offsets {
+		if offset&0x80000000 == 0 {
+			continue
+		}
+		largeIndex := int(offset & 0x7fffffff)
+		if largeIndex >= len(usedLarge) || usedLarge[largeIndex] {
+			return nil, errors.New("packfile: invalid or duplicate large offset index")
+		}
+		usedLarge[largeIndex] = true
+	}
+	for _, used := range usedLarge {
+		if !used {
+			return nil, errors.New("packfile: unreferenced large offset")
+		}
+	}
+
 	var buf bytes.Buffer
 	buf.WriteString(idxMagic)
 	if err := binary.Write(&buf, binary.BigEndian, idx.Version); err != nil {
@@ -965,37 +999,31 @@ func WriteIndex(idx *PackIndex) ([]byte, error) {
 	for _, id := range idx.IDs {
 		buf.Write(id.Bytes())
 	}
-	for _, c := range idx.CRCs {
-		if err := binary.Write(&buf, binary.BigEndian, c); err != nil {
+	for _, crc := range idx.CRCs {
+		if err := binary.Write(&buf, binary.BigEndian, crc); err != nil {
 			return nil, err
 		}
 	}
-	li := 0
-	for _, off := range idx.Offsets {
-		if off&0x80000000 != 0 {
-			if li >= len(idx.LargeOffsets) {
-				return nil, errors.New("packfile: missing large offset")
-			}
-			if err := binary.Write(&buf, binary.BigEndian, idx.LargeOffsets[li]); err != nil {
-				return nil, err
-			}
-			li++
-		} else {
-			if err := binary.Write(&buf, binary.BigEndian, off); err != nil {
-				return nil, err
-			}
+	for _, offset := range idx.Offsets {
+		if err := binary.Write(&buf, binary.BigEndian, offset); err != nil {
+			return nil, err
+		}
+	}
+	for _, offset := range idx.LargeOffsets {
+		if err := binary.Write(&buf, binary.BigEndian, offset); err != nil {
+			return nil, err
 		}
 	}
 	buf.Write(idx.PackChecksum.Bytes())
-	pre := buf.Bytes()
-	sum := crypto_sha1.Sum(pre)
+	sum := crypto_sha1.Sum(buf.Bytes())
 	buf.Write(sum[:])
 	return buf.Bytes(), nil
 }
 
-// ReadIndex parses .idx v2 bytes.
+// ReadIndex parses and validates a Git pack index version 2 file.
 func ReadIndex(data []byte) (*PackIndex, error) {
-	if len(data) < 8+256*4+20+20 {
+	const fixedSize = 8 + 256*4 + 20 + 20
+	if len(data) < fixedSize {
 		return nil, errors.New("packfile: idx too short")
 	}
 	if string(data[:4]) != idxMagic {
@@ -1005,62 +1033,90 @@ func ReadIndex(data []byte) (*PackIndex, error) {
 	if version != 2 {
 		return nil, fmt.Errorf("packfile: unsupported idx version %d", version)
 	}
+	checksumOffset := len(data) - 20
+	idxSum := crypto_sha1.Sum(data[:checksumOffset])
+	if !bytes.Equal(idxSum[:], data[checksumOffset:]) {
+		return nil, errors.New("packfile: idx checksum mismatch")
+	}
+
 	off := 8
 	var fanout [256]uint32
-	for i := 0; i < 256; i++ {
-		fanout[i] = binary.BigEndian.Uint32(data[off:])
+	for i := range fanout {
+		fanout[i] = binary.BigEndian.Uint32(data[off : off+4])
 		off += 4
+		if i > 0 && fanout[i] < fanout[i-1] {
+			return nil, errors.New("packfile: non-monotonic fan-out table")
+		}
 	}
 	n := fanout[255]
-	ids := make([]sha1.Digest, n)
-	for i := uint32(0); i < n; i++ {
-		id, err := sha1.FromBytes(data[off:])
+	remaining := uint64(checksumOffset - off)
+	if uint64(n)*28+20 > remaining {
+		return nil, errors.New("packfile: truncated object tables")
+	}
+	ids := make([]sha1.Digest, int(n))
+	for i := range ids {
+		id, err := sha1.FromBytes(data[off : off+20])
 		if err != nil {
 			return nil, err
 		}
 		ids[i] = id
 		off += 20
+		if i > 0 && bytes.Compare(ids[i-1][:], ids[i][:]) >= 0 {
+			return nil, errors.New("packfile: object IDs are not strictly sorted")
+		}
 	}
-	crcs := make([]uint32, n)
-	for i := uint32(0); i < n; i++ {
-		crcs[i] = binary.BigEndian.Uint32(data[off:])
+	crcs := make([]uint32, int(n))
+	for i := range crcs {
+		crcs[i] = binary.BigEndian.Uint32(data[off : off+4])
 		off += 4
 	}
-	offsets := make([]uint32, n)
-	var largeCount int
-	for i := uint32(0); i < n; i++ {
-		o := binary.BigEndian.Uint32(data[off:])
+	offsets := make([]uint32, int(n))
+	largeCount := 0
+	for i := range offsets {
+		offsets[i] = binary.BigEndian.Uint32(data[off : off+4])
 		off += 4
-		if o&0x80000000 != 0 {
+		if offsets[i]&0x80000000 != 0 {
 			largeCount++
 		}
-		offsets[i] = o
+	}
+	if uint64(off)+uint64(largeCount)*8+40 != uint64(len(data)) {
+		return nil, errors.New("packfile: invalid index table length")
 	}
 	large := make([]uint64, largeCount)
-	for i := 0; i < largeCount; i++ {
-		if off+8 > len(data) {
-			return nil, errors.New("packfile: truncated large offset table")
-		}
-		large[i] = binary.BigEndian.Uint64(data[off:])
+	usedLarge := make([]bool, largeCount)
+	for i := range large {
+		large[i] = binary.BigEndian.Uint64(data[off : off+8])
 		off += 8
 	}
-	var packCk, idxCk sha1.Digest
-	copy(packCk[:], data[off:off+20])
+	for _, offset := range offsets {
+		if offset&0x80000000 == 0 {
+			continue
+		}
+		index := int(offset & 0x7fffffff)
+		if index >= len(large) || usedLarge[index] {
+			return nil, errors.New("packfile: invalid or duplicate large offset index")
+		}
+		usedLarge[index] = true
+	}
+	for _, used := range usedLarge {
+		if !used {
+			return nil, errors.New("packfile: unreferenced large offset")
+		}
+	}
+	if computeFanout(ids) != fanout {
+		return nil, errors.New("packfile: fan-out table does not match object IDs")
+	}
+	var packChecksum sha1.Digest
+	copy(packChecksum[:], data[off:off+20])
 	off += 20
-	copy(idxCk[:], data[off:off+20])
+	var idxChecksum sha1.Digest
+	copy(idxChecksum[:], data[off:off+20])
 	return &PackIndex{
-		Version:      version,
-		Fanout:       fanout,
-		IDs:          ids,
-		CRCs:         crcs,
-		Offsets:      offsets,
-		LargeOffsets: large,
-		PackChecksum: packCk,
-		IDXChecksum:  idxCk,
+		Version: version, Fanout: fanout, IDs: ids, CRCs: crcs, Offsets: offsets,
+		LargeOffsets: large, PackChecksum: packChecksum, IDXChecksum: idxChecksum,
 	}, nil
 }
 
-// Find returns the pack offset for id.
 func (idx *PackIndex) Find(id sha1.Digest) (uint64, bool) {
 	i := sort.Search(len(idx.IDs), func(j int) bool {
 		return bytes.Compare(idx.IDs[j].Bytes(), id.Bytes()) >= 0
@@ -1086,27 +1142,42 @@ func (idx *PackIndex) Find(id sha1.Digest) (uint64, bool) {
 
 // BuildIndexFromPack builds a PackIndex from a resolved Pack.
 func BuildIndexFromPack(pack *Pack) *PackIndex {
-	ids := make([]sha1.Digest, 0, len(pack.Objects))
-	crcs := make([]uint32, 0, len(pack.Objects))
-	offsets := make([]uint32, 0, len(pack.Objects))
+	if pack == nil {
+		return nil
+	}
+	type indexEntry struct {
+		id     sha1.Digest
+		crc    uint32
+		offset uint64
+	}
+	entries := make([]indexEntry, 0, len(pack.Objects))
 	for _, po := range pack.Objects {
-		ids = append(ids, po.ID)
-		crcs = append(crcs, po.CRC32)
-		offsets = append(offsets, uint32(po.Offset))
+		entries = append(entries, indexEntry{id: po.ID, crc: po.CRC32, offset: po.Offset})
 	}
-	sort.Slice(ids, func(i, j int) bool {
-		return bytes.Compare(ids[i].Bytes(), ids[j].Bytes()) < 0
+	sort.Slice(entries, func(i, j int) bool {
+		return bytes.Compare(entries[i].id[:], entries[j].id[:]) < 0
 	})
-	fanout := computeFanout(ids)
-	return &PackIndex{
-		Version:      2,
-		Fanout:       fanout,
-		IDs:          ids,
-		CRCs:         crcs,
-		Offsets:      offsets,
+	idx := &PackIndex{
+		Version: 2, IDs: make([]sha1.Digest, 0, len(entries)),
+		CRCs: make([]uint32, 0, len(entries)), Offsets: make([]uint32, 0, len(entries)),
 		PackChecksum: pack.Checksum,
-		IDXChecksum:  sha1.Zero,
 	}
+	for _, entry := range entries {
+		idx.IDs = append(idx.IDs, entry.id)
+		idx.CRCs = append(idx.CRCs, entry.crc)
+		if entry.offset <= 0x7fffffff {
+			idx.Offsets = append(idx.Offsets, uint32(entry.offset))
+			continue
+		}
+		largeIndex := len(idx.LargeOffsets)
+		if uint64(largeIndex) > 0x7fffffff {
+			return nil
+		}
+		idx.LargeOffsets = append(idx.LargeOffsets, entry.offset)
+		idx.Offsets = append(idx.Offsets, 0x80000000|uint32(largeIndex))
+	}
+	idx.Fanout = computeFanout(idx.IDs)
+	return idx
 }
 
 func computeFanout(ids []sha1.Digest) [256]uint32 {
