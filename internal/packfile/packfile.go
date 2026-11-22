@@ -1189,27 +1189,35 @@ func ReadIndex(data []byte) (*PackIndex, error) {
 	}, nil
 }
 
-func (idx *PackIndex) Find(id sha1.Digest) (uint64, bool) {
+// FindEntry returns the packed-object offset and CRC32 for an object ID.
+// The offset and checksum are kept aligned with the sorted object-ID table.
+func (idx *PackIndex) FindEntry(id sha1.Digest) (offset uint64, crc32 uint32, ok bool) {
 	i := sort.Search(len(idx.IDs), func(j int) bool {
 		return bytes.Compare(idx.IDs[j].Bytes(), id.Bytes()) >= 0
 	})
-	if i >= len(idx.IDs) || idx.IDs[i] != id {
-		return 0, false
+	if i >= len(idx.IDs) || idx.IDs[i] != id || i >= len(idx.CRCs) || i >= len(idx.Offsets) {
+		return 0, 0, false
 	}
 	off := idx.Offsets[i]
 	if off&0x80000000 != 0 {
 		li := uint32(0)
-		for j := uint32(0); j < uint32(i); j++ {
+		for j := 0; j < i; j++ {
 			if idx.Offsets[j]&0x80000000 != 0 {
 				li++
 			}
 		}
 		if li >= uint32(len(idx.LargeOffsets)) {
-			return 0, false
+			return 0, 0, false
 		}
-		return idx.LargeOffsets[li], true
+		return idx.LargeOffsets[li], idx.CRCs[i], true
 	}
-	return uint64(off), true
+	return uint64(off), idx.CRCs[i], true
+}
+
+// Find returns the packed-object offset for an object ID.
+func (idx *PackIndex) Find(id sha1.Digest) (uint64, bool) {
+	offset, _, ok := idx.FindEntry(id)
+	return offset, ok
 }
 
 // BuildIndexFromPack builds a PackIndex from a resolved Pack.
