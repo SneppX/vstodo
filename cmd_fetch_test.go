@@ -3,8 +3,9 @@ package main
 import (
 	"bytes"
 	"compress/zlib"
-	"crypto/sha1"
+	cryptosha1 "crypto/sha1"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,8 @@ import (
 
 	"vstodo/internal/app"
 	"vstodo/internal/object"
+	"vstodo/internal/ref"
+	"vstodo/internal/sha1"
 )
 
 func fetchPacket(payload []byte) []byte {
@@ -129,7 +132,39 @@ func makeFetchPack(t *testing.T, objects ...*object.Object) []byte {
 			t.Fatal(err)
 		}
 	}
-	checksum := sha1.Sum(pack.Bytes())
+	checksum := cryptosha1.Sum(pack.Bytes())
 	pack.Write(checksum[:])
 	return pack.Bytes()
+}
+
+func TestFetchTrackingRefRejectsStaleSnapshot(t *testing.T) {
+	a, err := app.Init(filepath.Join(t.TempDir(), "checkout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "refs/remotes/origin/main"
+	oldID := sha1.Digest{1}
+	newerID := sha1.Digest{2}
+	staleID := sha1.Digest{3}
+	if err := a.Refs.UpdateRef(name, nil, oldID); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := readRefExpectation(a, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Refs.UpdateRef(name, &oldID, newerID); err != nil {
+		t.Fatal(err)
+	}
+	err = updateFetchedTrackingRef(a, fetchedTrackingRef{name: name, id: staleID, expected: expected})
+	if !errors.Is(err, ref.ErrReferenceChanged) {
+		t.Fatalf("stale fetch update error = %v, want ErrReferenceChanged", err)
+	}
+	got, err := a.Refs.ReadRef(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != newerID {
+		t.Fatalf("stale fetch overwrote newer ref: got %s, want %s", got.Hex(), newerID.Hex())
+	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"vstodo/internal/app"
 	"vstodo/internal/object"
 	"vstodo/internal/packfile"
+	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 	"vstodo/internal/transport"
 )
@@ -48,11 +50,7 @@ func fetchRemote(a *app.App, name, remoteURL string) error {
 		return err
 	}
 
-	type trackingRef struct {
-		name string
-		id   sha1.Digest
-	}
-	var tracking []trackingRef
+	var tracking []fetchedTrackingRef
 	wants := make([]sha1.Digest, 0, len(refs))
 	seen := make(map[sha1.Digest]struct{}, len(refs))
 	var head sha1.Digest
@@ -65,13 +63,13 @@ func fetchRemote(a *app.App, name, remoteURL string) error {
 			if !validRemoteRefSuffix(suffix) {
 				return fmt.Errorf("remote: server advertised an invalid branch ref %q", remoteRef.Name)
 			}
-			tracking = append(tracking, trackingRef{name: "refs/remotes/" + name + "/" + suffix, id: remoteRef.Hash})
+			tracking = append(tracking, fetchedTrackingRef{name: "refs/remotes/" + name + "/" + suffix, id: remoteRef.Hash})
 		case strings.HasPrefix(remoteRef.Name, "refs/tags/"):
 			suffix := strings.TrimPrefix(remoteRef.Name, "refs/tags/")
 			if !validRemoteRefSuffix(suffix) {
 				return fmt.Errorf("remote: server advertised an invalid tag ref %q", remoteRef.Name)
 			}
-			tracking = append(tracking, trackingRef{name: "refs/remotes/" + name + "/tags/" + suffix, id: remoteRef.Hash})
+			tracking = append(tracking, fetchedTrackingRef{name: "refs/remotes/" + name + "/tags/" + suffix, id: remoteRef.Hash})
 		default:
 			continue
 		}
@@ -82,6 +80,21 @@ func fetchRemote(a *app.App, name, remoteURL string) error {
 	}
 	if len(wants) == 0 {
 		return fmt.Errorf("remote: %q advertised no fetchable refs", name)
+	}
+
+	for i := range tracking {
+		expected, err := readRefExpectation(a, tracking[i].name)
+		if err != nil {
+			return fmt.Errorf("remote: snapshot %s: %w", tracking[i].name, err)
+		}
+		tracking[i].expected = expected
+	}
+	var headExpected *sha1.Digest
+	if head != sha1.Zero {
+		headExpected, err = readRefExpectation(a, "refs/remotes/"+name+"/HEAD")
+		if err != nil {
+			return fmt.Errorf("remote: snapshot remote HEAD: %w", err)
+		}
 	}
 
 	packBytes, err := httpTransport.FetchPack(ctx, remoteURL, token, wants)
@@ -101,14 +114,14 @@ func fetchRemote(a *app.App, name, remoteURL string) error {
 			return fmt.Errorf("remote: object identity mismatch: pack has %s, storage computed %s", packed.ID.Hex(), id.Hex())
 		}
 	}
-	for _, ref := range tracking {
-		if err := a.Refs.WriteRef(ref.name, ref.id); err != nil {
-			return fmt.Errorf("remote: update %s: %w", ref.name, err)
+	for _, fetched := range tracking {
+		if err := a.Refs.UpdateRef(fetched.name, fetched.expected, fetched.id); err != nil {
+			return fmt.Errorf("remote: update %s (remote-tracking ref changed concurrently; retry fetch): %w", fetched.name, err)
 		}
 	}
 	if head != sha1.Zero {
-		if err := a.Refs.WriteRef("refs/remotes/"+name+"/HEAD", head); err != nil {
-			return fmt.Errorf("remote: update remote HEAD: %w", err)
+		if err := a.Refs.UpdateRef("refs/remotes/"+name+"/HEAD", headExpected, head); err != nil {
+			return fmt.Errorf("remote: update remote HEAD (changed concurrently; retry fetch): %w", err)
 		}
 	}
 	fmt.Printf("Fetched %d objects from %s\n", len(pack.Objects), name)
@@ -130,4 +143,25 @@ func validRemoteRefSuffix(suffix string) bool {
 		}
 	}
 	return true
+}
+
+type fetchedTrackingRef struct {
+	name     string
+	id       sha1.Digest
+	expected *sha1.Digest
+}
+
+func readRefExpectation(a *app.App, name string) (*sha1.Digest, error) {
+	id, err := a.Refs.ReadRef(name)
+	if err != nil {
+		if errors.Is(err, ref.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &id, nil
+}
+
+func updateFetchedTrackingRef(a *app.App, fetched fetchedTrackingRef) error {
+	return a.Refs.UpdateRef(fetched.name, fetched.expected, fetched.id)
 }

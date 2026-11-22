@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -9,6 +10,7 @@ import (
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
 	"vstodo/internal/packfile"
+	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 	"vstodo/internal/transport"
 	"vstodo/internal/tree"
@@ -66,6 +68,12 @@ func cmdPush(a *app.App, args []string) error {
 		return fmt.Errorf("push: branch %q has no commit", branch)
 	}
 
+	trackingRef := "refs/remotes/" + remoteName + "/" + branch
+	trackingExpected, err := readRefExpectation(a, trackingRef)
+	if err != nil {
+		return fmt.Errorf("push: snapshot tracking ref: %w", err)
+	}
+
 	token := os.Getenv("VSTODO_GITHUB_TOKEN")
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
@@ -108,7 +116,10 @@ func cmdPush(a *app.App, args []string) error {
 	if err := httpTransport.PushPack(context.Background(), remoteURL, token, remoteHead, localHead, remoteRef, packBytes); err != nil {
 		return err
 	}
-	if err := a.Refs.WriteRef("refs/remotes/"+remoteName+"/"+branch, localHead); err != nil {
+	if err := a.Refs.UpdateRef(trackingRef, trackingExpected, localHead); err != nil {
+		if errors.Is(err, ref.ErrReferenceChanged) {
+			return fmt.Errorf("push succeeded but local tracking ref changed concurrently; fetch to reconcile: %w", err)
+		}
 		return fmt.Errorf("push succeeded but local tracking ref update failed: %w", err)
 	}
 	fmt.Printf("Pushed %s to %s (%d objects)\n", branch, remoteName, len(objects))

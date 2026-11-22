@@ -40,13 +40,13 @@ vstodo push origin main
 
 For GitHub authentication, provide `VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN` through the environment. Remote URLs must not contain embedded credentials, query strings, or fragments.
 
-Push is intentionally conservative: it updates one branch, requires the advertised remote tip to be present locally and be an ancestor of the local tip, and relies on the server's receive-pack status before updating the local remote-tracking ref. Force pushes, tag pushes, multi-ref pushes, SSH transport, partial clones, shallow clones, and Git protocol v2 are not implemented.
+Push is intentionally conservative: it updates one branch, requires the advertised remote tip to be present locally and be an ancestor of the local tip, and relies on the server's receive-pack status before updating the local remote-tracking ref. Fetch and push protect each local remote-tracking ref update with compare-and-swap so concurrent operations cannot silently overwrite a newer value. A multi-ref fetch is not yet an all-or-nothing transaction; if a ref changes during the update phase, fetch reports the conflict and can be retried. Force pushes, tag pushes, multi-ref pushes, SSH transport, partial clones, shallow clones, and Git protocol v2 are not implemented.
 
 ## Storage and repository trade-offs
 
-The local object store remains append-only loose storage under `.vstodo/objects`. The packfile codec is used to exchange objects with HTTP remotes; fetch resolves incoming pack objects and writes them to the loose store, while push builds a pack from the objects reachable from the selected branch. VSTodo does not yet retain packfiles as a persistent local storage backend, use alternates, or provide Git's repack/maintenance behavior.
+The local object store remains append-only loose storage under `.vstodo/objects`. The packfile codec is used to exchange objects with HTTP remotes; fetch resolves incoming pack objects and writes them to the loose store, while push builds a pack from the objects reachable from the selected branch. VSTodo does not yet retain packfiles as a persistent local storage backend, use alternates, or provide Git's repack/maintenance behavior. Garbage collection currently prunes unreachable loose objects only when explicitly requested.
 
-The index and refs favor inspectability over Git's mature binary and transactional formats. VSTodo has no reflog, hooks, submodules, SHA-256 repository format, or complete Git configuration model. Its linked-worktree command is intentionally smaller than Git's worktree administration and locking semantics.
+The index uses Git DIRC v2 with checksum validation and stale-snapshot protection. Refs remain loose text files; individual updates use exclusive lockfiles and compare-and-swap, but multi-ref transactions, reflogs, and packed-refs are not implemented. VSTodo has no reflog, hooks, submodules, SHA-256 repository format, or complete Git configuration model. Its linked-worktree command is intentionally smaller than Git's worktree administration and locking semantics.
 
 ## Summary
 
