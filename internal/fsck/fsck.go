@@ -4,12 +4,12 @@ package fsck
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
+	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 	"vstodo/internal/tree"
 )
@@ -97,7 +97,7 @@ func Check(a *app.App) (Report, error) {
 		if branchErr != nil {
 			return report, fmt.Errorf("fsck: read HEAD: %w", branchErr)
 		}
-		if branch == "" || !errors.Is(err, os.ErrNotExist) {
+		if branch == "" || !errors.Is(err, ref.ErrNotFound) {
 			return report, fmt.Errorf("fsck: resolve HEAD: %w", err)
 		}
 		// An unborn symbolic branch is valid in a newly initialized repository.

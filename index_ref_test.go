@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -165,5 +166,82 @@ func TestRefErrNotFound(t *testing.T) {
 	store := ref.NewStore(dir)
 	if _, err := store.ReadRef("refs/heads/nonexistent"); !errors.Is(err, ref.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestRefLockPreventsConcurrentWriter(t *testing.T) {
+	dir := t.TempDir()
+	store := ref.NewStore(dir)
+	first := sha1.Digest{1}
+	second := sha1.Digest{2}
+	if err := store.WriteRef("refs/heads/main", first); err != nil {
+		t.Fatal(err)
+	}
+	lockPath := filepath.Join(dir, "refs", "heads", "main.lock")
+	if err := os.WriteFile(lockPath, []byte("held"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteRef("refs/heads/main", second); !errors.Is(err, ref.ErrLockExists) {
+		t.Fatalf("WriteRef error = %v, want ErrLockExists", err)
+	}
+	got, err := store.ReadRef("refs/heads/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != first {
+		t.Fatalf("ref changed while lock was held: got %s, want %s", got.Hex(), first.Hex())
+	}
+}
+
+func TestRefRejectsPathTraversal(t *testing.T) {
+	store := ref.NewStore(t.TempDir())
+	if err := store.WriteRef("../outside", sha1.Digest{1}); err == nil {
+		t.Fatal("WriteRef accepted path traversal")
+	}
+	if _, err := store.ReadRef("../../outside"); err == nil {
+		t.Fatal("ReadRef accepted path traversal")
+	}
+	if err := store.WriteRefSymbolic("HEAD", "../outside"); err == nil {
+		t.Fatal("WriteRefSymbolic accepted path traversal")
+	}
+}
+
+func TestRefDetectsSymbolicCycles(t *testing.T) {
+	store := ref.NewStore(t.TempDir())
+	if err := store.WriteRefSymbolic("HEAD", "refs/heads/main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteRefSymbolic("refs/heads/main", "HEAD"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReadRef("HEAD"); err == nil {
+		t.Fatal("ReadRef accepted a symbolic reference cycle")
+	}
+}
+
+func TestDeleteRefHonorsLock(t *testing.T) {
+	dir := t.TempDir()
+	store := ref.NewStore(dir)
+	id := sha1.Digest{9}
+	if err := store.WriteRef("refs/heads/main", id); err != nil {
+		t.Fatal(err)
+	}
+	lockPath := filepath.Join(dir, "refs", "heads", "main.lock")
+	if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteRef("refs/heads/main"); !errors.Is(err, ref.ErrLockExists) {
+		t.Fatalf("DeleteRef error = %v, want ErrLockExists", err)
+	}
+	got, err := store.ReadRef("refs/heads/main")
+	if err != nil || got != id {
+		t.Fatalf("ref after rejected deletion = %s, %v", got.Hex(), err)
+	}
+}
+
+func TestDeleteRefReportsMissingReference(t *testing.T) {
+	store := ref.NewStore(t.TempDir())
+	if err := store.DeleteRef("refs/heads/missing"); !errors.Is(err, ref.ErrNotFound) {
+		t.Fatalf("DeleteRef error = %v, want ErrNotFound", err)
 	}
 }
