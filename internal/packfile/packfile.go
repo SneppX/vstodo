@@ -86,6 +86,12 @@ const (
 	ObjREFDelta ObjectType = 7
 )
 
+const (
+	maxPackObjects     = 1_000_000
+	maxPackObjectSize  = 256 << 20
+	maxPackDecodedSize = 1 << 30
+)
+
 func (t ObjectType) String() string {
 	switch t {
 	case ObjCommit:
@@ -143,8 +149,31 @@ func (w *PackWriter) SetVersion(v uint32) { w.version = v }
 // WritePack serializes objects into pack bytes, applying OFS_DELTA compression
 // between similar objects where beneficial. Returns pack bytes and checksum.
 func (w *PackWriter) WritePack() ([]byte, sha1.Digest, error) {
+	if w.version != 2 && w.version != 3 {
+		return nil, sha1.Zero, fmt.Errorf("packfile: unsupported version %d", w.version)
+	}
+	if len(w.objs) > maxPackObjects {
+		return nil, sha1.Zero, fmt.Errorf("packfile: object count exceeds safety limit")
+	}
 	sorted := make([]*object.Object, len(w.objs))
-	copy(sorted, w.objs)
+	for i, obj := range w.objs {
+		if obj == nil {
+			return nil, sha1.Zero, errors.New("packfile: nil object")
+		}
+		if len(obj.Data) > maxPackObjectSize {
+			return nil, sha1.Zero, fmt.Errorf("packfile: object exceeds %d-byte safety limit", maxPackObjectSize)
+		}
+		if obj.Type != object.CommitType && obj.Type != object.TreeType && obj.Type != object.BlobType && obj.Type != object.TagType {
+			return nil, sha1.Zero, fmt.Errorf("packfile: unsupported object type %q", obj.Type)
+		}
+		copyObject := *obj
+		computedID := object.ComputeID(copyObject.Type, copyObject.Data)
+		if copyObject.ID != sha1.Zero && copyObject.ID != computedID {
+			return nil, sha1.Zero, fmt.Errorf("packfile: object ID mismatch: have %s, computed %s", copyObject.ID.Hex(), computedID.Hex())
+		}
+		copyObject.ID = computedID
+		sorted[i] = &copyObject
+	}
 	sort.Slice(sorted, func(i, j int) bool {
 		return bytes.Compare(sorted[i].ID.Bytes(), sorted[j].ID.Bytes()) < 0
 	})
@@ -364,14 +393,27 @@ func zlibCompress(data []byte) ([]byte, error) {
 // zlibDecompressWithCount decompresses a zlib stream at the start of data and
 // returns the output plus the number of input bytes consumed.
 func zlibDecompressWithCount(data []byte) ([]byte, int, error) {
+	return zlibDecompressWithLimit(data, maxPackObjectSize)
+}
+
+// zlibDecompressWithLimit bounds decompressed output before allocating it.
+func zlibDecompressWithLimit(data []byte, limit uint64) ([]byte, int, error) {
+	if limit > maxPackObjectSize {
+		return nil, 0, fmt.Errorf("packfile: decompression limit exceeds safety ceiling")
+	}
 	cr := &countingReader{R: bytes.NewReader(data)}
 	zr, err := zlib.NewReader(cr)
 	if err != nil {
 		return nil, 0, err
 	}
-	out, err := io.ReadAll(zr)
+	out, err := io.ReadAll(io.LimitReader(zr, int64(limit)+1))
 	if err != nil {
+		_ = zr.Close()
 		return nil, 0, err
+	}
+	if uint64(len(out)) > limit {
+		_ = zr.Close()
+		return nil, 0, fmt.Errorf("packfile: decompressed data exceeds declared size limit")
 	}
 	if err := zr.Close(); err != nil {
 		return nil, 0, err
@@ -615,25 +657,36 @@ func ReadPack(data []byte) (*Pack, error) {
 	if !bytes.Equal(sumBytes[:], trailer) {
 		return nil, errors.New("packfile: checksum mismatch")
 	}
+	if n > maxPackObjects || uint64(n) > uint64(len(body)-12) {
+		return nil, errors.New("packfile: object count exceeds available data or safety limit")
+	}
 
 	off := 12
-	rawObjs := make([]packedRaw, n)
+	var decodedBytes uint64
+	rawObjs := make([]packedRaw, int(n))
 	for i := uint32(0); i < n; i++ {
 		cur := off
-		typ, size, newOff, err := readHeader(data, off)
+		typ, size, newOff, err := readHeader(body, off)
 		if err != nil {
 			return nil, fmt.Errorf("packfile: header object %d: %w", i, err)
 		}
 		off = newOff
+		if size > maxPackObjectSize {
+			return nil, fmt.Errorf("packfile: object %d exceeds %d-byte safety limit", i, maxPackObjectSize)
+		}
 		ro := packedRaw{off: uint64(cur), typ: typ, size: size}
 		switch typ {
 		case ObjCommit, ObjTree, ObjBlob, ObjTag:
-			raw, consumed, err := zlibDecompressWithCount(data[off:])
+			raw, consumed, err := zlibDecompressWithLimit(body[off:], size)
 			if err != nil {
 				return nil, fmt.Errorf("packfile: object %d zlib: %w", i, err)
 			}
 			if uint64(len(raw)) != size {
 				return nil, fmt.Errorf("packfile: object %d size mismatch", i)
+			}
+			decodedBytes += uint64(len(raw))
+			if decodedBytes > maxPackDecodedSize {
+				return nil, errors.New("packfile: total decoded object data exceeds safety limit")
 			}
 			vt, err := gitTypeToVstodo(typ)
 			if err != nil {
@@ -643,7 +696,7 @@ func ReadPack(data []byte) (*Pack, error) {
 			ro.data = raw
 			off += consumed
 		case ObjOFSDelta:
-			baseDistance, newOff, err := decodeOFSOffset(data, off)
+			baseDistance, newOff, err := decodeOFSOffset(body, off)
 			if err != nil {
 				return nil, fmt.Errorf("packfile: object %d ofs offset: %w", i, err)
 			}
@@ -652,29 +705,37 @@ func ReadPack(data []byte) (*Pack, error) {
 			}
 			ro.baseOff = uint64(cur) - baseDistance
 			off = newOff
-			delta, consumed, err := zlibDecompressWithCount(data[off:])
+			delta, consumed, err := zlibDecompressWithLimit(body[off:], size)
 			if err != nil {
 				return nil, fmt.Errorf("packfile: object %d delta zlib: %w", i, err)
 			}
 			if uint64(len(delta)) != size {
 				return nil, fmt.Errorf("packfile: object %d delta size mismatch", i)
 			}
+			decodedBytes += uint64(len(delta))
+			if decodedBytes > maxPackDecodedSize {
+				return nil, errors.New("packfile: total decoded object data exceeds safety limit")
+			}
 			ro.delta = delta
 			off += consumed
 		case ObjREFDelta:
-			if off+20 > len(data) {
+			if off+20 > len(body) {
 				return nil, fmt.Errorf("packfile: object %d truncated ref delta", i)
 			}
 			var baseID sha1.Digest
-			copy(baseID[:], data[off:off+20])
+			copy(baseID[:], body[off:off+20])
 			ro.baseID = baseID
 			off += 20
-			delta, consumed, err := zlibDecompressWithCount(data[off:])
+			delta, consumed, err := zlibDecompressWithLimit(body[off:], size)
 			if err != nil {
 				return nil, fmt.Errorf("packfile: object %d ref delta zlib: %w", i, err)
 			}
 			if uint64(len(delta)) != size {
 				return nil, fmt.Errorf("packfile: object %d ref delta size mismatch", i)
+			}
+			decodedBytes += uint64(len(delta))
+			if decodedBytes > maxPackDecodedSize {
+				return nil, errors.New("packfile: total decoded object data exceeds safety limit")
 			}
 			ro.delta = delta
 			off += consumed
@@ -683,6 +744,9 @@ func ReadPack(data []byte) (*Pack, error) {
 		}
 		ro.end = uint64(off)
 		rawObjs[i] = ro
+	}
+	if off != len(body) {
+		return nil, errors.New("packfile: trailing data after declared objects")
 	}
 
 	// Resolve iteratively: plain objects first, then deltas whose bases resolve.
@@ -693,6 +757,7 @@ func ReadPack(data []byte) (*Pack, error) {
 	byID := make(map[sha1.Digest]int, n)
 	resolved := make([]*PackedObject, n)
 	changed := true
+	var resolvedDeltaBytes uint64
 	for changed {
 		changed = false
 		for i := range rawObjs {
@@ -718,6 +783,10 @@ func ReadPack(data []byte) (*Pack, error) {
 				resolvedData, err := applyDelta(base.Data, ro.delta)
 				if err != nil {
 					return nil, fmt.Errorf("packfile: apply delta %d: %w", i, err)
+				}
+				resolvedDeltaBytes += uint64(len(resolvedData))
+				if resolvedDeltaBytes > maxPackDecodedSize {
+					return nil, errors.New("packfile: total resolved delta data exceeds safety limit")
 				}
 				po := &PackedObject{Type: base.Type, Data: resolvedData, Offset: ro.off, Length: ro.end - ro.off}
 				po.ID = object.ComputeID(po.Type, po.Data)
@@ -782,6 +851,9 @@ func readHeader(data []byte, off int) (ObjectType, uint64, int, error) {
 		if off >= len(data) {
 			return 0, 0, 0, errors.New("packfile: truncated header continuation")
 		}
+		if shift >= 64 || uint64(data[off]&0x7f) > (^uint64(0)>>shift) {
+			return 0, 0, 0, errors.New("packfile: object size header overflow")
+		}
 		b = data[off]
 		off++
 		size |= uint64(b&0x7f) << shift
@@ -809,7 +881,7 @@ func applyDelta(base, delta []byte) ([]byte, error) {
 	if uint64(len(base)) != srcSize {
 		return nil, fmt.Errorf("packfile: delta base size mismatch %d != %d", len(base), srcSize)
 	}
-	if tgtSize > 1<<30 || tgtSize > uint64(^uint(0)>>1) {
+	if tgtSize > maxPackObjectSize || tgtSize > uint64(^uint(0)>>1) {
 		return nil, errors.New("packfile: delta target exceeds safety limit")
 	}
 	var out bytes.Buffer
