@@ -37,6 +37,20 @@ func TestPackStorePersistsAndLoadsPackedObjects(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("Has(%s) = %v, %v", id.Hex(), ok, err)
 	}
+	looseIDs, err := store.Objects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(looseIDs) != 0 {
+		t.Fatalf("loose object count = %d, want 0", len(looseIDs))
+	}
+	allIDs, err := store.AllObjects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allIDs) != 1 || allIDs[0] != id {
+		t.Fatalf("AllObjects() = %v, want [%s]", allIDs, id.Hex())
+	}
 
 	// A new store instance proves that reads are backed by durable files,
 	// rather than only by the first instance's in-memory cache.
