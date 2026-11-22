@@ -35,8 +35,14 @@ func NewHTTPTransport() *HTTPTransport {
 	return &HTTPTransport{Client: &http.Client{Timeout: 20 * time.Second}}
 }
 
-// FetchPack requests all objects reachable from the supplied tips using Git smart HTTP v0.
+// FetchPack requests objects reachable from the supplied tips using Git smart HTTP v0.
 func (t *HTTPTransport) FetchPack(ctx context.Context, remoteURL, token string, wants []sha1.Digest) ([]byte, error) {
+	return t.FetchPackWithHaves(ctx, remoteURL, token, wants, nil)
+}
+
+// FetchPackWithHaves negotiates against locally available commits before requesting
+// the pack, allowing the server to omit objects already present in the client.
+func (t *HTTPTransport) FetchPackWithHaves(ctx context.Context, remoteURL, token string, wants, haves []sha1.Digest) ([]byte, error) {
 	if len(wants) == 0 {
 		return nil, errors.New("remote: at least one object ID is required")
 	}
@@ -61,6 +67,20 @@ func (t *HTTPTransport) FetchPack(ctx context.Context, remoteURL, token string, 
 		}
 	}
 	request.WriteString("0000")
+	seenHaves := make(map[sha1.Digest]struct{}, len(haves))
+	for _, have := range haves {
+		if have == sha1.Zero {
+			continue
+		}
+		if _, exists := seenHaves[have]; exists {
+			continue
+		}
+		seenHaves[have] = struct{}{}
+		line := "have " + have.Hex() + "\n"
+		if _, err := fmt.Fprintf(&request, "%04x%s", len(line)+4, line); err != nil {
+			return nil, err
+		}
+	}
 	request.WriteString("0009done\n")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(request.Bytes()))

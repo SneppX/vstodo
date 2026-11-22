@@ -140,3 +140,36 @@ func TestHTTPTransportListPushRefsUsesReceivePackAdvertisement(t *testing.T) {
 		t.Fatalf("unexpected push refs: %#v", refs)
 	}
 }
+
+func TestHTTPTransportFetchPackSendsDeduplicatedHaveLines(t *testing.T) {
+	wantID := sha1.Digest{1}
+	haveID := sha1.Digest{2}
+	fixture := []byte("PACK negotiated")
+	response := packetLine(string(append([]byte{1}, fixture...))) + "0000"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := string(body)
+		if !strings.Contains(request, "want "+wantID.Hex()) {
+			t.Fatalf("request missing want line: %q", request)
+		}
+		if strings.Count(request, "have "+haveID.Hex()+"\n") != 1 {
+			t.Fatalf("request should contain exactly one deduplicated have line: %q", request)
+		}
+		if !strings.HasSuffix(request, "0009done\n") {
+			t.Fatalf("request did not finish negotiation with done: %q", request)
+		}
+		w.Header().Set("Content-Type", "application/x-git-upload-pack-result")
+		_, _ = io.WriteString(w, response)
+	}))
+	defer server.Close()
+	got, err := NewHTTPTransport().FetchPackWithHaves(context.Background(), server.URL, "", []sha1.Digest{wantID}, []sha1.Digest{haveID, haveID, sha1.Zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, fixture) {
+		t.Fatalf("got pack %q, want %q", got, fixture)
+	}
+}

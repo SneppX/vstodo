@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"vstodo/internal/app"
@@ -97,7 +98,11 @@ func fetchRemote(a *app.App, name, remoteURL string) error {
 		}
 	}
 
-	packBytes, err := httpTransport.FetchPack(ctx, remoteURL, token, wants)
+	haves, err := localHaveCommits(a)
+	if err != nil {
+		return fmt.Errorf("remote: collect local negotiation commits: %w", err)
+	}
+	packBytes, err := httpTransport.FetchPackWithHaves(ctx, remoteURL, token, wants, haves)
 	if err != nil {
 		return err
 	}
@@ -164,4 +169,35 @@ func readRefExpectation(a *app.App, name string) (*sha1.Digest, error) {
 
 func updateFetchedTrackingRef(a *app.App, fetched fetchedTrackingRef) error {
 	return a.Refs.UpdateRef(fetched.name, fetched.expected, fetched.id)
+}
+
+func localHaveCommits(a *app.App) ([]sha1.Digest, error) {
+	refs, err := a.Refs.ListAllRefs()
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[sha1.Digest]struct{})
+	var haves []sha1.Digest
+	add := func(id sha1.Digest) {
+		if id == sha1.Zero {
+			return
+		}
+		if _, exists := seen[id]; exists {
+			return
+		}
+		obj, err := a.Store.Load(id)
+		if err != nil || obj.Type != object.CommitType {
+			return
+		}
+		seen[id] = struct{}{}
+		haves = append(haves, id)
+	}
+	for _, id := range refs {
+		add(id)
+	}
+	if head, err := a.Refs.Head(); err == nil {
+		add(head)
+	}
+	sort.Slice(haves, func(i, j int) bool { return haves[i].Hex() < haves[j].Hex() })
+	return haves, nil
 }

@@ -168,3 +168,34 @@ func TestFetchTrackingRefRejectsStaleSnapshot(t *testing.T) {
 		t.Fatalf("stale fetch overwrote newer ref: got %s, want %s", got.Hex(), newerID.Hex())
 	}
 }
+
+func TestLocalHaveCommitsUsesAvailableCommitRefsOnly(t *testing.T) {
+	a, err := app.Init(filepath.Join(t.TempDir(), "checkout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitData := []byte("tree 1111111111111111111111111111111111111111\nauthor Test <test@example.com> 1 +0000\ncommitter Test <test@example.com> 1 +0000\n\nlocal commit\n")
+	commitID, err := a.Store.Store(&object.Object{Type: object.CommitType, Data: commitData})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobID, err := a.Store.Store(&object.Object{Type: object.BlobType, Data: []byte("not a commit")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"refs/heads/main", "refs/remotes/origin/main"} {
+		if err := a.Refs.WriteRef(name, commitID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.Refs.WriteRef("refs/tags/blob-target", blobID); err != nil {
+		t.Fatal(err)
+	}
+	haves, err := localHaveCommits(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(haves) != 1 || haves[0] != commitID {
+		t.Fatalf("local have commits = %v, want only %s", haves, commitID.Hex())
+	}
+}
