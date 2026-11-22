@@ -42,11 +42,14 @@ func cmdDiff(a *app.App, args []string) error {
 		}
 		return nil
 	}
-	lid, err := sha1.FromHex(args[0])
+	if len(args) != 2 {
+		return fmt.Errorf("usage: vstodo diff [commit1 commit2]")
+	}
+	lid, err := resolveCommitish(a, args[0])
 	if err != nil {
 		return err
 	}
-	rid, err := sha1.FromHex(args[1])
+	rid, err := resolveCommitish(a, args[1])
 	if err != nil {
 		return err
 	}
