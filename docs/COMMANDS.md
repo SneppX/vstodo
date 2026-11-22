@@ -152,7 +152,8 @@ vstodo fsck
 ```
 
 Verify every loose object checksum and payload, validate tree entries and
-commit/tag references, and check branch, tag, and HEAD targets. The command is
+commit/tag references, and check all references under `refs/` plus HEAD. This
+includes local branches, tags, remote-tracking refs, and notes. The command is
 read-only and reports object counts when the repository is healthy.
 
 
@@ -212,12 +213,14 @@ etc.). Notes are stored as separate objects referenced by a notes ref.
 ### gc
 
 ```
-vstodo gc
+vstodo gc [--dry-run|--prune]
 ```
 
-Garbage-collect unreachable objects and optimize the repository. With only loose
-objects this is a no-op placeholder; it is the hook where packfile compaction
-and object pruning would be implemented.
+By default, report reachable and unreachable loose-object counts without
+changing the repository. `--prune` removes unreachable loose objects after
+marking HEAD, every reference under `refs/`, and stash history. It does not
+repack or delete objects from packfiles; persistent pack storage is not yet
+implemented.
 
 ### worktree
 

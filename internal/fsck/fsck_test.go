@@ -114,3 +114,32 @@ func TestCheckRejectsMissingTreeEntry(t *testing.T) {
 		t.Fatalf("expected missing tree entry error, got %v", err)
 	}
 }
+
+func TestCheckValidatesRemoteTrackingReferences(t *testing.T) {
+	a := fixture(t)
+	branchID, err := a.Refs.ReadRef("refs/heads/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Refs.WriteRef("refs/remotes/origin/main", branchID); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Check(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.References != 2 {
+		t.Fatalf("reference count = %d, want 2", report.References)
+	}
+}
+
+func TestCheckRejectsMissingRemoteTrackingTarget(t *testing.T) {
+	a := fixture(t)
+	missing := sha1.Digest{9, 8, 7}
+	if err := a.Refs.WriteRef("refs/remotes/origin/broken", missing); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Check(a); err == nil || !strings.Contains(err.Error(), "missing object") {
+		t.Fatalf("expected missing remote-tracking target error, got %v", err)
+	}
+}

@@ -25,7 +25,7 @@ type Report struct {
 }
 
 // Check verifies every loose object's checksum, structure, and object links,
-// then verifies all branch, tag, and HEAD references. It never modifies data.
+// then verifies all references under refs/ and HEAD. It never modifies data.
 func Check(a *app.App) (Report, error) {
 	var report Report
 	ids, err := a.Store.Objects()
@@ -69,7 +69,7 @@ func Check(a *app.App) (Report, error) {
 			}
 		}
 	}
-	refs, err := a.Refs.ListRefs()
+	refs, err := a.Refs.ListAllRefs()
 	if err != nil {
 		return report, fmt.Errorf("fsck: list references: %w", err)
 	}
