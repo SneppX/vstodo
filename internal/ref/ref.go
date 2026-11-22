@@ -16,6 +16,9 @@ import (
 // ErrNotFound is returned when a ref does not exist.
 var ErrNotFound = errors.New("ref not found")
 
+// ErrReferenceChanged indicates a reference no longer matches the expected value.
+var ErrReferenceChanged = errors.New("reference changed")
+
 // ErrLockExists indicates another writer owns the reference lock.
 var ErrLockExists = lockfile.ErrLocked
 
@@ -118,6 +121,46 @@ func (s *Store) acquireLock(refName string) (string, *lockfile.Lock, error) {
 		return "", nil, fmt.Errorf("ref: acquire lock for %s: %w", refName, err)
 	}
 	return path, lock, nil
+}
+
+// UpdateRef atomically updates a direct reference only when its current value
+// matches expected. A nil expected value means the reference must not exist.
+// Symbolic references are rejected; callers must update the resolved branch ref.
+func (s *Store) UpdateRef(refName string, expected *sha1.Digest, next sha1.Digest) error {
+	path, lock, err := s.acquireLock(refName)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+
+	var current *sha1.Digest
+	info, err := os.Lstat(path)
+	if err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("ref: %s is not a regular file", refName)
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		value := strings.TrimSpace(string(data))
+		if strings.HasPrefix(value, "ref: ") {
+			return fmt.Errorf("ref: compare-and-swap requires a direct reference: %s", refName)
+		}
+		digest, parseErr := sha1.FromHex(value)
+		if parseErr != nil {
+			return fmt.Errorf("ref: malformed %s", refName)
+		}
+		current = &digest
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	if (expected == nil) != (current == nil) ||
+		(expected != nil && current != nil && *expected != *current) {
+		return fmt.Errorf("%w: %s", ErrReferenceChanged, refName)
+	}
+	return lock.Commit([]byte(next.Hex() + "\n"))
 }
 
 // WriteRef atomically sets refName to digest (non-symbolic).

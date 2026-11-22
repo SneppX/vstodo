@@ -245,3 +245,35 @@ func TestDeleteRefReportsMissingReference(t *testing.T) {
 		t.Fatalf("DeleteRef error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestRefUpdateUsesExpectedValue(t *testing.T) {
+	store := ref.NewStore(t.TempDir())
+	first := sha1.Digest{1}
+	second := sha1.Digest{2}
+	third := sha1.Digest{3}
+
+	if err := store.UpdateRef("refs/heads/main", nil, first); err != nil {
+		t.Fatalf("create with nil expectation: %v", err)
+	}
+	if err := store.UpdateRef("refs/heads/main", &first, second); err != nil {
+		t.Fatalf("update matching value: %v", err)
+	}
+	if err := store.UpdateRef("refs/heads/main", &first, third); !errors.Is(err, ref.ErrReferenceChanged) {
+		t.Fatalf("stale update error = %v, want ErrReferenceChanged", err)
+	}
+	got, err := store.ReadRef("refs/heads/main")
+	if err != nil || got != second {
+		t.Fatalf("ref after stale update = %s, %v; want %s", got.Hex(), err, second.Hex())
+	}
+}
+
+func TestRefUpdateRejectsSymbolicReference(t *testing.T) {
+	store := ref.NewStore(t.TempDir())
+	if err := store.WriteRefSymbolic("HEAD", "refs/heads/main"); err != nil {
+		t.Fatal(err)
+	}
+	expected := sha1.Digest{1}
+	if err := store.UpdateRef("HEAD", &expected, sha1.Digest{2}); err == nil {
+		t.Fatal("UpdateRef accepted a symbolic reference")
+	}
+}

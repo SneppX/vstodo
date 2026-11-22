@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
+	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 )
 
@@ -27,10 +29,30 @@ func cmdCommit(a *app.App, args []string) error {
 		return err
 	}
 
+	branch, err := a.Refs.CurrentBranch()
+	if err != nil {
+		return fmt.Errorf("commit: resolve current branch: %w", err)
+	}
+
+	refName := "HEAD"
+	var expected *sha1.Digest
 	var parents []sha1.Digest
-	headID, err := currentCommitID(a)
-	if err == nil && headID != sha1.Zero {
-		parents = append(parents, headID)
+	if branch != "" {
+		refName = "refs/heads/" + branch
+		current, readErr := a.Refs.ReadRef(refName)
+		if readErr == nil {
+			expected = &current
+			parents = append(parents, current)
+		} else if !errors.Is(readErr, ref.ErrNotFound) {
+			return fmt.Errorf("commit: read branch tip: %w", readErr)
+		}
+	} else {
+		current, readErr := currentCommitID(a)
+		if readErr != nil {
+			return fmt.Errorf("commit: resolve detached HEAD: %w", readErr)
+		}
+		expected = &current
+		parents = append(parents, current)
 	}
 
 	cb := commit.Build(treeID, parents, commitIdentity(a), commitIdentity(a), msg)
@@ -39,24 +61,19 @@ func cmdCommit(a *app.App, args []string) error {
 		return err
 	}
 
-	branch, err := a.Refs.CurrentBranch()
-	if err != nil || branch == "" {
-		branch = "main"
-	}
-	if err := a.Refs.WriteRef("refs/heads/"+branch, commitID); err != nil {
-		return err
-	}
-	if err := a.Refs.SetHead("ref: refs/heads/" + branch); err != nil {
-		return err
-	}
-
-	// The index represents the complete next snapshot, not only the latest
-	// additions. Keep its entries after committing so later commits retain
-	// files that were already tracked.
+	// Persist the staged snapshot before publishing the new commit tip. If
+	// persistence fails, the visible branch or detached HEAD remains unchanged.
 	if err := a.SaveIndex(); err != nil {
 		return err
 	}
+	if err := a.Refs.UpdateRef(refName, expected, commitID); err != nil {
+		return fmt.Errorf("commit: publish new tip: %w", err)
+	}
 
-	fmt.Printf("[%s %s] %s\n", branch, commitID.Hex()[:7], msg)
+	label := branch
+	if label == "" {
+		label = "detached"
+	}
+	fmt.Printf("[%s %s] %s\n", label, commitID.Hex()[:7], msg)
 	return nil
 }
