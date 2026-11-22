@@ -24,13 +24,13 @@ type Report struct {
 	References int
 }
 
-// Check verifies every loose object's checksum, structure, and object links,
+// Check verifies every loose and packed object's checksum, structure, and object links,
 // then verifies all references under refs/ and HEAD. It never modifies data.
 func Check(a *app.App) (Report, error) {
 	var report Report
-	ids, err := a.Store.Objects()
+	ids, err := a.Store.AllObjects()
 	if err != nil {
-		return report, fmt.Errorf("fsck: enumerate objects: %w", err)
+		return report, fmt.Errorf("fsck: enumerate loose and packed objects: %w", err)
 	}
 	objects := make(map[sha1.Digest]*object.Object, len(ids))
 	for _, id := range ids {
