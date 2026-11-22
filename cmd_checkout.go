@@ -22,14 +22,27 @@ func cmdCheckout(a *app.App, args []string) error {
 	var id sha1.Digest
 	branchName := ""
 
-	if branchID, err := a.Refs.ReadRef("refs/heads/" + target); err == nil {
-		id = branchID
-		branchName = target
-	} else {
-		var err error
-		id, err = sha1.FromHex(target)
-		if err != nil {
+	switch {
+	case target == "HEAD":
+		headID, err := currentCommitID(a)
+		if err != nil || headID == sha1.Zero {
 			return fmt.Errorf("not a branch or commit: %s", target)
+		}
+		id = headID
+	default:
+		if branchID, err := a.Refs.ReadRef("refs/heads/" + target); err == nil {
+			id = branchID
+			branchName = target
+		} else if tagID, err := a.Refs.ReadRef("refs/tags/" + target); err == nil {
+			id = tagID
+		} else if remoteID, err := a.Refs.ReadRef("refs/remotes/" + target); err == nil {
+			id = remoteID
+		} else {
+			var err error
+			id, err = sha1.FromHex(target)
+			if err != nil {
+				return fmt.Errorf("not a branch or commit: %s", target)
+			}
 		}
 	}
 

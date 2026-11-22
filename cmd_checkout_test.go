@@ -164,3 +164,21 @@ func TestCheckoutRefusesUntrackedFiles(t *testing.T) {
 		t.Fatalf("current branch = %q, err=%v; want main", branch, err)
 	}
 }
+
+func TestCheckoutTagDetachesHead(t *testing.T) {
+	a, _, targetID, _ := checkoutFixture(t)
+	if err := a.Refs.WriteRef("refs/tags/v1", targetID); err != nil {
+		t.Fatalf("write tag: %v", err)
+	}
+	if err := cmdCheckout(a, []string{"v1"}); err != nil {
+		t.Fatalf("checkout tag: %v", err)
+	}
+	head, err := a.Refs.Head()
+	if err != nil || head != targetID {
+		t.Fatalf("HEAD=%v err=%v want %s", head, err, targetID.Hex())
+	}
+	branch, err := a.Refs.CurrentBranch()
+	if err != nil || branch != "" {
+		t.Fatalf("branch=%q err=%v want detached", branch, err)
+	}
+}
