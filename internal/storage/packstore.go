@@ -96,6 +96,31 @@ func (s *PackStore) AllObjects() ([]sha1.Digest, error) {
 	return out, nil
 }
 
+// ReadRaw returns the compressed object representation, whether the object
+// is loose or packed.
+func (s *PackStore) ReadRaw(id sha1.Digest) ([]byte, error) {
+	if s == nil || s.Loose == nil {
+		return nil, errors.New("storage: pack store has no loose store")
+	}
+	raw, err := s.Loose.ReadRaw(id)
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		return raw, err
+	}
+	obj, err := s.Load(id)
+	if err != nil {
+		return nil, err
+	}
+	return object.Compress(obj.Type, obj.Data)
+}
+
+// StoreRaw validates and stores a compressed object in the loose store.
+func (s *PackStore) StoreRaw(id sha1.Digest, raw []byte) error {
+	if s == nil || s.Loose == nil {
+		return errors.New("storage: pack store has no loose store")
+	}
+	return s.Loose.StoreRaw(id, raw)
+}
+
 // StorePack validates and durably publishes a Git pack and its v2 index.
 // The checksum-derived filename makes pack publication idempotent.
 func (s *PackStore) StorePack(data []byte) (int, error) {
