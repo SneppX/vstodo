@@ -10,7 +10,6 @@ import (
 
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
-	"vstodo/internal/index"
 	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 	"vstodo/internal/walk"
@@ -388,16 +387,13 @@ func checkoutCommit(a *app.App, id sha1.Digest) error {
 			return err
 		}
 	}
-	a.Index = indexFromTree(tm)
-	return a.SaveIndex()
-}
-
-func indexFromTree(tm map[string]sha1.Digest) *index.Index {
-	idx := index.NewIndex("")
-	for p, d := range tm {
-		idx.Add(p, d)
+	for path := range a.Index.Entries() {
+		a.Index.Remove(path)
 	}
-	return idx
+	for p, d := range tm {
+		a.Index.Add(p, d)
+	}
+	return a.SaveIndex()
 }
 
 func appendBisectLog(a *app.App, line string) error {
