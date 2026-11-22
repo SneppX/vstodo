@@ -103,12 +103,20 @@ unindexed pack. Both files are published through synced temporary files and
 atomic hard links. Existing immutable files are accepted only if their bytes
 match. New object writes continue to use loose storage.
 
-The initial pack-backed reader uses the validated pack decoder and caches a
-decoded pack in memory after its first object lookup. This establishes durable
-pack storage and restart-safe lookup, but it is not yet a bounded-memory,
-random-access pack reader. The application fetch path and garbage collector
-remain on the loose-store backend until the storage interface is integrated
-end-to-end; received packs are not yet retained by the normal fetch command.
+The application uses `storage.PackStore` for object reads and writes.
+Newly created objects remain loose. HTTP fetch validates the received pack,
+publishes its immutable `.pack` and v2 `.idx` files, and only then advances
+remote-tracking references. Local clone/fetch can enumerate and copy both loose
+and packed objects. Parsed pack indexes are cached after successful validation;
+the decoded-pack cache retains at most one pack and skips retaining packs above
+its configured decoded-size budget.
+
+Pack lookup is not yet random-access: the current reader decodes a complete pack
+to resolve its objects and deltas. Large packs therefore still require
+substantial temporary memory and I/O. Garbage collection can inspect reachability
+and prune unreachable loose objects, but it does not repack, expire, or delete
+objects from immutable packfiles. Pack maintenance and bounded-memory random
+access remain outstanding compatibility and scalability work.
 
 ## Index
 
