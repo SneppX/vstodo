@@ -98,3 +98,57 @@ func TestPackIndexWriteRejectsMismatchedTables(t *testing.T) {
 		t.Fatal("WriteIndex accepted mismatched object tables")
 	}
 }
+
+func TestPackIndexFindEntryUsesDirectLargeOffsetIndex(t *testing.T) {
+	ids := []sha1.Digest{{1}, {2}, {3}}
+	idx := &PackIndex{
+		Version:      2,
+		IDs:          ids,
+		CRCs:         []uint32{11, 22, 33},
+		Offsets:      []uint32{0x80000001, 200, 0x80000000},
+		LargeOffsets: []uint64{0x80000030, 0x80000020},
+	}
+	idx.Fanout = computeFanout(idx.IDs)
+	encoded, err := WriteIndex(idx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := ReadIndex(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		id     sha1.Digest
+		offset uint64
+		crc    uint32
+	}{
+		{ids[0], 0x80000020, 11},
+		{ids[1], 200, 22},
+		{ids[2], 0x80000030, 33},
+	}
+	for _, tc := range cases {
+		offset, crc, ok := decoded.FindEntry(tc.id)
+		if !ok || offset != tc.offset || crc != tc.crc {
+			t.Fatalf("FindEntry(%s) = (%d, %d, %v), want (%d, %d, true)", tc.id.Hex(), offset, crc, ok, tc.offset, tc.crc)
+		}
+	}
+}
+
+func TestPackIndexFindEntryUsesFanoutRange(t *testing.T) {
+	pack := &Pack{Objects: []PackedObject{
+		{ID: sha1.Digest{1, 1}, Offset: 10, CRC32: 101},
+		{ID: sha1.Digest{2, 1}, Offset: 20, CRC32: 201},
+		{ID: sha1.Digest{2, 2}, Offset: 30, CRC32: 202},
+		{ID: sha1.Digest{255, 1}, Offset: 40, CRC32: 2551},
+	}}
+	idx := BuildIndexFromPack(pack)
+	for _, po := range pack.Objects {
+		offset, crc, ok := idx.FindEntry(po.ID)
+		if !ok || offset != po.Offset || crc != po.CRC32 {
+			t.Fatalf("FindEntry(%s) = (%d, %d, %v), want (%d, %d, true)", po.ID.Hex(), offset, crc, ok, po.Offset, po.CRC32)
+		}
+	}
+	if _, _, ok := idx.FindEntry(sha1.Digest{3}); ok {
+		t.Fatal("FindEntry found an absent object")
+	}
+}
