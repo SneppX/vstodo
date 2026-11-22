@@ -349,3 +349,38 @@ func TestSyncGitRejectsMismatchedBranches(t *testing.T) {
 		t.Fatalf("expected branch mismatch refusal, got %v", err)
 	}
 }
+
+
+func TestSyncGitRefLockPreventsConcurrentUpdate(t *testing.T) {
+	root := makeRealGitRepoForExport(t)
+	if _, err := Adopt(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("new Git-side commit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "add", "README.md")
+	runGit(t, root, "commit", "-m", "Git-side commit after adoption")
+	gitHead := runGit(t, root, "rev-parse", "HEAD")
+	a, err := app.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vstodoHead, err := a.Refs.ReadRef("refs/heads/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lockPath := filepath.Join(root, ".git", "refs", "heads", "main.lock")
+	if err := os.WriteFile(lockPath, []byte("another Git process owns this lock"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SyncGit(root, ""); err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Fatalf("expected locked Git ref refusal, got %v", err)
+	}
+	if got, err := a.Refs.ReadRef("refs/heads/main"); err != nil || got != vstodoHead {
+		t.Fatalf("VSTodo ref changed despite Git lock: %s, err=%v", got.Hex(), err)
+	}
+	if got := runGit(t, root, "rev-parse", "HEAD"); got != gitHead {
+		t.Fatalf("Git ref changed despite lock: %s != %s", got, gitHead)
+	}
+}

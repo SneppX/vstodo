@@ -148,8 +148,29 @@ func SyncGit(root, requestedBranch string) (SyncGitReport, error) {
 		return report, fmt.Errorf("sync-git: Git and VSTodo histories diverged; no branch was changed (Git %s, VSTodo %s)", gitHead.Hex(), vstodoHead.Hex())
 	}
 
-	// Re-read Git HEAD and its branch ref before updating VSTodo. If Git moved
-	// while objects were imported, leave both branch tips untouched and retry.
+	// Hold Git's standard branch lock while checking its final value and
+	// updating VSTodo. This prevents a concurrent Git ref writer from moving
+	// the source branch between the final check and the VSTodo compare-and-swap.
+	gitRefPath := filepath.Join(gitDir, filepath.FromSlash(refName))
+	if err := ensureGitDirectory(gitDir, filepath.Dir(gitRefPath)); err != nil {
+		return report, fmt.Errorf("sync-git: prepare Git ref lock: %w", err)
+	}
+	gitLockPath := gitRefPath + ".lock"
+	gitLock, err := os.OpenFile(gitLockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return report, fmt.Errorf("sync-git: Git branch %q is locked by another process; retry after it finishes", gitBranch)
+		}
+		return report, fmt.Errorf("sync-git: lock Git branch: %w", err)
+	}
+	if err := gitLock.Close(); err != nil {
+		_ = os.Remove(gitLockPath)
+		return report, fmt.Errorf("sync-git: close Git branch lock: %w", err)
+	}
+	defer os.Remove(gitLockPath)
+
+	// Re-read Git HEAD and its branch ref while holding the Git lock. If the
+	// branch moved during object import, leave both branch tips untouched.
 	latestBranch, err := readGitHeadBranch(gitDir)
 	if err != nil {
 		return report, fmt.Errorf("sync-git: recheck Git HEAD: %w", err)
