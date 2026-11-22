@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sort"
+	"strings"
 	"sync"
 
 	"vstodo/internal/object"
@@ -23,8 +23,8 @@ type PackStore struct {
 	Loose      *LooseStore
 	ObjectsDir string
 	PacksDir   string
-	mu       sync.Mutex
-	cache    map[string]*packfile.Pack
+	mu    sync.Mutex
+	cache map[string]*packfile.Pack
 }
 
 // NewPackStore creates a pack-aware store around an existing loose store.
@@ -60,23 +60,37 @@ func (s *PackStore) Objects() ([]sha1.Digest, error) {
 // AllObjects enumerates loose and indexed packed objects in stable order.
 func (s *PackStore) AllObjects() ([]sha1.Digest, error) {
 	ids, err := s.Objects()
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	seen := make(map[sha1.Digest]struct{}, len(ids))
-	for _, id := range ids { seen[id] = struct{}{} }
+	for _, id := range ids {
+		seen[id] = struct{}{}
+	}
 	entries, err := os.ReadDir(s.PacksDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("storage: enumerate pack indexes: %w", err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".idx") { continue }
+		if entry.IsDir() || !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".idx") {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(s.PacksDir, entry.Name()))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		idx, err := packfile.ReadIndex(data)
-		if err != nil { return nil, fmt.Errorf("storage: invalid pack index %s: %w", entry.Name(), err) }
-		for _, id := range idx.IDs { seen[id] = struct{}{} }
+		if err != nil {
+			return nil, fmt.Errorf("storage: invalid pack index %s: %w", entry.Name(), err)
+		}
+		for _, id := range idx.IDs {
+			seen[id] = struct{}{}
+		}
 	}
 	out := make([]sha1.Digest, 0, len(seen))
-	for id := range seen { out = append(out, id) }
+	for id := range seen {
+		out = append(out, id)
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Hex() < out[j].Hex() })
 	return out, nil
 }
