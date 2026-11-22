@@ -174,3 +174,25 @@ Commands are split into three groups (see `vstodo help` and
 The CLI entry point (`main.go`) routes the first argument to the matching
 `cmd_*` function. Non-`init` commands require a repository to be present in the
 current directory (or an ancestor).
+
+
+## Adopted Git synchronization boundary
+
+An adopted working tree contains two independent reference stores. VSTodo
+does not assume that Git and VSTodo refs remain synchronized after adoption.
+
+- \`git-status\` reads both branch tips and reports their names and commit IDs.
+  It does not import objects or mutate repository state.
+- \`sync-git\` imports and validates the Git object database, checks commit
+  ancestry, then fast-forwards only the matching VSTodo branch.
+- Before the final update, VSTodo acquires Git's standard branch lock, rechecks
+  Git HEAD and the branch tip, and updates the VSTodo ref with compare-and-swap.
+- Git refs, Git configuration, both indexes, and working files are preserved.
+  The unchanged VSTodo index and working tree remain visible as changes against
+  the newly advanced VSTodo HEAD.
+- \`export-git\` remains the explicit reverse direction. Divergent histories
+  require manual review; VSTodo never chooses a side or force-updates refs.
+
+Synchronization operates on committed branch history only. It does not import
+Git's staged or unstaged changes, merge arbitrary divergence, or provide
+automatic two-way synchronization.

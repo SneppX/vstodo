@@ -36,13 +36,13 @@ change is a local `.git/info/exclude` rule for `.vstodo/`, which keeps
 VSTodo's private metadata out of ordinary Git status output. Existing exclude
 rules are preserved. Git objects, refs, config, index, remotes, and working
 files remain unchanged, and Git remains fully usable during the adoption
-period. Use `vstodo export-git` to copy VSTodo-created commits back into the checked-out Git branch without rewriting `.git/config`, `.git/index`, or working files. Git remains usable throughout the transition. VSTodo also imports branch upstream (`remote`/`merge`), branch
+period. Use `vstodo git-status` to compare the checked-out Git branch with the matching VSTodo branch. If Git has new commits, `vstodo sync-git` imports loose and packed Git objects and advances VSTodo only when Git is a fast-forward of the VSTodo branch. The command uses Git's branch lock and VSTodo's compare-and-swap ref update; it does not change Git refs, either index, config, or working files. If VSTodo is ahead, use `vstodo export-git`. Diverged histories are rejected for manual review. VSTodo also imports branch upstream (`remote`/`merge`), branch
 `pushRemote`, and remote `pushurl` settings; default pull and push use those
 settings when present. Existing staged changes are preserved in the Git index backup but are
 not yet represented as VSTodo staged changes; inspect `vstodo status` before
 making VSTodo commits.
 
-The initial adoption flow supports standard `.git` directories and SHA-1
+The synchronization commands reconcile committed branch history only. They do not import Git's staged or unstaged changes, and they preserve the VSTodo index and working tree so `vstodo status` can show differences against the newly advanced HEAD. The initial adoption flow supports standard `.git` directories and SHA-1
 repositories. Linked worktrees, submodules, SHA-256 repositories, and object
 alternates are rejected safely rather than partially imported. VSTodo's remote
 transport currently supports HTTP(S); SSH remote settings are preserved but

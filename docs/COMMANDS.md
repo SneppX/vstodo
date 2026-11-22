@@ -373,3 +373,39 @@ refuses detached HEAD, branch mismatches, locked refs, corrupt objects, and
 non-fast-forward history. Run `vstodo adopt` first. The Git index, config,
 working files, remotes, and remote history are not modified; after export, use
 ordinary `git push` when you are ready to publish the new commits.
+
+
+### git-status
+
+\`\`\`sh
+vstodo git-status
+\`\`\`
+
+Compare the current Git branch and its commit with the matching VSTodo branch.
+This command is read-only: it does not import objects or change refs, indexes,
+configuration, or working files. It prints both branch names and full commit IDs.
+
+### sync-git
+
+\`\`\`sh
+vstodo sync-git [branch]
+\`\`\`
+
+Import loose and packed objects from the adopted Git object database, validate
+the Git branch tip and its reachable history, then fast-forward the matching
+VSTodo branch when Git is ahead. The command acquires Git's standard branch
+lock while rechecking the source ref and uses VSTodo's ref compare-and-swap
+update. It never changes the Git branch ref.
+
+The Git index, VSTodo index, configuration, and working files are preserved.
+Because VSTodo's branch tip advances while its index and working tree remain
+unchanged, \`vstodo status\` shows their differences relative to the new HEAD.
+Git-side staged and unstaged edits are not imported as commits or staged
+changes by this command.
+
+If VSTodo is already ahead, no ref is changed and the command recommends
+\`vstodo export-git\`. If the histories diverged, the branches do not match,
+Git HEAD is detached, the source ref is locked or changes during import, or
+the imported history is incomplete, reconciliation is refused. A failed
+reconciliation may leave valid but unreachable objects in \`.vstodo/\`; it does
+not delete objects or rewrite either history.
