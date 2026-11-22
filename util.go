@@ -45,18 +45,24 @@ func walkFiles(root string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
-			return nil
-		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
+		if d.IsDir() {
+			if rel == ".git" {
+				return fs.SkipDir
+			}
+			if excludeMetadata && rel == metadataRel {
+				return fs.SkipDir
+			}
 			return nil
 		}
-		if excludeMetadata && (rel == metadataRel || strings.HasPrefix(rel, metadataRel+"/")) {
+		if strings.HasPrefix(rel, ".git/") {
+			return nil
+		}
+		if excludeMetadata && strings.HasPrefix(rel, metadataRel+"/") {
 			return nil
 		}
 		out = append(out, rel)
