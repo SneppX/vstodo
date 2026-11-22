@@ -13,6 +13,7 @@ import (
 	"vstodo/internal/object"
 	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
+	"vstodo/internal/storage"
 )
 
 // Transport copies objects and refs between repositories.
@@ -84,7 +85,7 @@ func copyObjects(src, dst *storage.PackStore) error {
 
 // fetchMissingObjects copies objects present in src but missing from dst.
 func fetchMissingObjects(src, dst *storage.PackStore) error {
-	ids, err := src.Objects()
+	ids, err := src.AllObjects()
 	if err != nil {
 		return err
 	}
