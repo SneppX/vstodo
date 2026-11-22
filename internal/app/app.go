@@ -41,7 +41,8 @@ func Init(root string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	store := storage.NewLooseStore(r.ObjectsDir())
+	loose := storage.NewLooseStore(r.ObjectsDir())
+	store := storage.NewPackStore(loose, r.GitPath("objects", "pack"))
 	idx := index.NewIndex(r.GitPath("index"))
 	refs := ref.NewStore(r.GitDir)
 	return &App{Repo: r, Store: store, Index: idx, Refs: refs}, nil
