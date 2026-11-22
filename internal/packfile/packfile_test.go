@@ -59,6 +59,17 @@ func TestPackIndexKeepsMetadataAlignedWhenSortingIDs(t *testing.T) {
 	if got, ok := decoded.Find(wantIDs[0]); !ok || got != 0x80000010 {
 		t.Fatalf("Find large offset = %d, %v; want %d, true", got, ok, uint64(0x80000010))
 	}
+	offset, crc, ok := decoded.FindEntry(wantIDs[0])
+	if !ok || offset != 0x80000010 || crc != wantCRCs[0] {
+		t.Fatalf("FindEntry large offset = (%d, %08x, %v), want (%d, %08x, true)", offset, crc, ok, uint64(0x80000010), wantCRCs[0])
+	}
+	offset, crc, ok = decoded.FindEntry(wantIDs[1])
+	if !ok || offset != 200 || crc != wantCRCs[1] {
+		t.Fatalf("FindEntry regular offset = (%d, %08x, %v), want (200, %08x, true)", offset, crc, ok, wantCRCs[1])
+	}
+	if _, _, ok := decoded.FindEntry(sha1.Digest{99}); ok {
+		t.Fatal("FindEntry found an unknown object ID")
+	}
 }
 
 func TestPackIndexReadRejectsCorruptionAndTruncation(t *testing.T) {
