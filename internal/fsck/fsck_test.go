@@ -74,6 +74,9 @@ func TestCheckRejectsCorruptObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(a.Store.ObjectsDir, ids[0].Hex()[:2], ids[0].Hex()[2:])
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte("not a zlib stream"), 0o644); err != nil {
 		t.Fatal(err)
 	}
