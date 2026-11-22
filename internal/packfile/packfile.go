@@ -1222,6 +1222,7 @@ func (idx *PackIndex) FindEntry(id sha1.Digest) (offset uint64, crc32 uint32, ok
 	return uint64(off), idx.CRCs[i], true
 }
 
+
 // Find returns the packed-object offset for an object ID.
 func (idx *PackIndex) Find(id sha1.Digest) (uint64, bool) {
 	offset, _, ok := idx.FindEntry(id)
