@@ -5,6 +5,7 @@ import (
 
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
+	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 )
 
@@ -19,6 +20,9 @@ func cmdDiff(a *app.App, args []string) error {
 		obj, err := a.Store.Load(headID)
 		if err != nil {
 			return err
+		}
+		if obj.Type != object.CommitType {
+			return fmt.Errorf("diff: %s is not a commit", headID.Hex())
 		}
 		c, err := commit.Parse(headID, obj.Data)
 		if err != nil {
@@ -57,9 +61,15 @@ func cmdDiff(a *app.App, args []string) error {
 	if err != nil {
 		return err
 	}
+	if lo.Type != object.CommitType {
+		return fmt.Errorf("diff: %s is not a commit", lid.Hex())
+	}
 	ro, err := a.Store.Load(rid)
 	if err != nil {
 		return err
+	}
+	if ro.Type != object.CommitType {
+		return fmt.Errorf("diff: %s is not a commit", rid.Hex())
 	}
 	lc, err := commit.Parse(lid, lo.Data)
 	if err != nil {
