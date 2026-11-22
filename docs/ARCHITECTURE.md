@@ -10,9 +10,7 @@
 - **Git-compatible object model**: blobs, trees, commits, and annotated tags use
   the same header format and serialization as Git, so `vstodo` objects can be
   read by Git tooling (and vice versa) for the core object types.
-- **Simple, human-readable index**: the staging area is a line-oriented text
-  file (`<hex digest>\t<path>`) at `.vstodo/index` rather than Git's binary
-  packed index.
+- **Git-compatible index**: the staging area reads and writes Git index v2 files, preserving file modes and validating checksums. Legacy VSTodo text indexes are still accepted for migration.
 - **Pluggable storage**: the object store is an interface (`object.Store`) with
   a loose-files implementation (`storage.LooseStore`). Packfile codecs support
   remote exchange; a persistent packfile or database backend can be added
@@ -127,7 +125,7 @@ Reading a ref follows symbolic pointers recursively.
 | Object envelope | `<type> <size>\0<content>` | same |
 | Compression | zlib (deflate) | zlib (deflate) |
 | Hashing | SHA-1 | SHA-1 |
-| Index | `.vstodo/index` (text) | `.git/index` (binary) |
+| Index | `.vstodo/index` (Git DIRC v2) | `.git/index` (binary) |
 | HEAD | `.vstodo/HEAD` | `.git/HEAD` |
 | Branches | `.vstodo/refs/heads/*` | `.git/refs/heads/*` |
 | Tags | `.vstodo/refs/tags/*` | `.git/refs/tags/*` |
@@ -145,7 +143,7 @@ Commands are split into three groups (see `vstodo help` and `docs/COMMANDS.md`):
 
 - **Core**: `init`, `add`, `commit`, `status`, `log`, `branch`, `checkout`,
   `diff`, `show`, `merge`, `tag`, `reset`, `rm`, `rebase`
-- **Advanced**: `blame`, `bisect`, `stash`, `cherry-pick`, `notes`, `gc`,
+- **Advanced**: `blame`, `bisect`, `stash`, `cherry-pick`, `notes`, `fsck`, `gc`,
   `worktree`, `bundle`
 - **Plumbing**: `hash-object`, `cat-file`
 

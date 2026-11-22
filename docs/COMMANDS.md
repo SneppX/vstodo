@@ -145,6 +145,17 @@ creating new commits with the same trees and messages on the new base.
 
 ## Advanced commands
 
+### fsck
+
+```
+vstodo fsck
+```
+
+Verify every loose object checksum and payload, validate tree entries and
+commit/tag references, and check branch, tag, and HEAD targets. The command is
+read-only and reports object counts when the repository is healthy.
+
+
 ### blame
 
 ```
