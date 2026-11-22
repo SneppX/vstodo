@@ -59,8 +59,8 @@ func (t *LocalTransport) Fetch(src, dst *app.App) error {
 // copyObjects reads every object from src and stores it in dst (skipping
 // objects dst already has). Objects are copied as raw compressed files so
 // the content-addressed ids are preserved exactly.
-func copyObjects(src, dst *storage.LooseStore) error {
-	ids, err := src.Objects()
+func copyObjects(src, dst *storage.PackStore) error {
+	ids, err := src.AllObjects()
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func copyObjects(src, dst *storage.LooseStore) error {
 }
 
 // fetchMissingObjects copies objects present in src but missing from dst.
-func fetchMissingObjects(src, dst *storage.LooseStore) error {
+func fetchMissingObjects(src, dst *storage.PackStore) error {
 	ids, err := src.Objects()
 	if err != nil {
 		return err
