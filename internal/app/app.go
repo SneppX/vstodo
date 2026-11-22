@@ -14,7 +14,7 @@ import (
 // App is the wired vstodo context.
 type App struct {
 	Repo  *repo.Repository
-	Store *storage.LooseStore
+	Store *storage.PackStore
 	Index *index.Index
 	Refs  *ref.Store
 }
@@ -25,7 +25,8 @@ func New(root string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	store := storage.NewLooseStore(r.ObjectsDir())
+	loose := storage.NewLooseStore(r.ObjectsDir())
+	store := storage.NewPackStore(loose, r.GitPath("objects", "pack"))
 	idx := index.NewIndex(r.GitPath("index"))
 	if err := idx.Load(); err != nil {
 		return nil, err
