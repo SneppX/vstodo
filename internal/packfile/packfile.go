@@ -1192,21 +1192,29 @@ func ReadIndex(data []byte) (*PackIndex, error) {
 // FindEntry returns the packed-object offset and CRC32 for an object ID.
 // The offset and checksum are kept aligned with the sorted object-ID table.
 func (idx *PackIndex) FindEntry(id sha1.Digest) (offset uint64, crc32 uint32, ok bool) {
-	i := sort.Search(len(idx.IDs), func(j int) bool {
-		return bytes.Compare(idx.IDs[j].Bytes(), id.Bytes()) >= 0
+	if idx == nil || len(idx.IDs) == 0 || len(idx.CRCs) != len(idx.IDs) || len(idx.Offsets) != len(idx.IDs) {
+		return 0, 0, false
+	}
+	first := int(id[0])
+	lo, hi := 0, int(idx.Fanout[first])
+	if first > 0 {
+		lo = int(idx.Fanout[first-1])
+	}
+	if lo < 0 || hi > len(idx.IDs) || lo > hi {
+		return 0, 0, false
+	}
+	i := lo + sort.Search(hi-lo, func(j int) bool {
+		return bytes.Compare(idx.IDs[lo+j][:], id[:]) >= 0
 	})
-	if i >= len(idx.IDs) || idx.IDs[i] != id || i >= len(idx.CRCs) || i >= len(idx.Offsets) {
+	if i >= hi || idx.IDs[i] != id {
 		return 0, 0, false
 	}
 	off := idx.Offsets[i]
 	if off&0x80000000 != 0 {
-		li := uint32(0)
-		for j := 0; j < i; j++ {
-			if idx.Offsets[j]&0x80000000 != 0 {
-				li++
-			}
-		}
-		if li >= uint32(len(idx.LargeOffsets)) {
+		// Git's v2 index stores the large-offset table index in the low
+		// 31 bits. It is a direct lookup, not a count of preceding entries.
+		li := int(off & 0x7fffffff)
+		if li >= len(idx.LargeOffsets) {
 			return 0, 0, false
 		}
 		return idx.LargeOffsets[li], idx.CRCs[i], true
