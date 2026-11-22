@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
+	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 )
 
@@ -78,8 +80,14 @@ func cmdTag(a *app.App, args []string) error {
 		fmt.Printf("Deleted tag '%s'\n", name)
 		return nil
 	}
-	if _, err := a.Refs.ReadRef(refName); err == nil && !force {
-		return fmt.Errorf("tag '%s' already exists (use -f to replace it)", name)
+	var expected *sha1.Digest
+	if existing, err := a.Refs.ReadRef(refName); err == nil {
+		if !force {
+			return fmt.Errorf("tag '%s' already exists (use -f to replace it)", name)
+		}
+		expected = &existing
+	} else if !errors.Is(err, ref.ErrNotFound) {
+		return err
 	}
 
 	target := "HEAD"
@@ -129,7 +137,10 @@ func cmdTag(a *app.App, args []string) error {
 			return err
 		}
 	}
-	if err := a.Refs.WriteRef(refName, refID); err != nil {
+	if err := a.Refs.UpdateRef(refName, expected, refID); err != nil {
+		if errors.Is(err, ref.ErrReferenceChanged) && !force {
+			return fmt.Errorf("tag '%s' already exists (use -f to replace it)", name)
+		}
 		return err
 	}
 	fmt.Printf("Created tag '%s' at %s\n", name, targetID.Hex()[:7])

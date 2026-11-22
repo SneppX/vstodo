@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"vstodo/internal/app"
+	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
 )
 
@@ -71,6 +73,8 @@ func cmdBranch(a *app.App, args []string) error {
 	refName := "refs/heads/" + name
 	if _, err := a.Refs.ReadRef(refName); err == nil {
 		return fmt.Errorf("branch '%s' already exists", name)
+	} else if !errors.Is(err, ref.ErrNotFound) {
+		return err
 	}
 	var id sha1.Digest
 	var err error
@@ -82,7 +86,10 @@ func cmdBranch(a *app.App, args []string) error {
 	if err != nil || id == sha1.Zero {
 		return fmt.Errorf("branch: cannot resolve start point")
 	}
-	if err := a.Refs.WriteRef(refName, id); err != nil {
+	if err := a.Refs.UpdateRef(refName, nil, id); err != nil {
+		if errors.Is(err, ref.ErrReferenceChanged) {
+			return fmt.Errorf("branch '%s' already exists", name)
+		}
 		return err
 	}
 	fmt.Printf("Branch '%s' created at %s\n", name, id.Hex()[:7])
