@@ -80,13 +80,10 @@ func (s *PackStore) AllObjects() ([]sha1.Digest, error) {
 		if entry.IsDir() || !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".idx") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(s.PacksDir, entry.Name()))
+		indexPath := filepath.Join(s.PacksDir, entry.Name())
+		idx, err := s.loadPackIndex(indexPath)
 		if err != nil {
 			return nil, err
-		}
-		idx, err := packfile.ReadIndex(data)
-		if err != nil {
-			return nil, fmt.Errorf("storage: invalid pack index %s: %w", entry.Name(), err)
 		}
 		for _, id := range idx.IDs {
 			seen[id] = struct{}{}
