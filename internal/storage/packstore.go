@@ -23,6 +23,7 @@ type PackStore struct {
 	Loose      *LooseStore
 	ObjectsDir string
 	PacksDir   string
+
 	mu    sync.Mutex
 	cache map[string]*packfile.Pack
 }
