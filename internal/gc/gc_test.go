@@ -87,3 +87,16 @@ func TestGCAbortsOnBrokenReferenceWithoutDeletingObjects(t *testing.T) {
 	}
 	_ = os.ErrNotExist
 }
+
+func TestGCPreservesObjectsReachableOnlyFromRemoteTrackingRefs(t *testing.T) {
+	a, _, remoteOnlyID := gcFixture(t)
+	if err := a.Refs.WriteRef("refs/remotes/origin/feature", remoteOnlyID); err != nil {
+		t.Fatalf("write remote-tracking ref: %v", err)
+	}
+	if err := GCWithOptions(a, false); err != nil {
+		t.Fatalf("GC prune: %v", err)
+	}
+	if has, err := a.Store.Has(remoteOnlyID); err != nil || !has {
+		t.Fatalf("object reachable only from remote-tracking ref was pruned; has=%v err=%v", has, err)
+	}
+}

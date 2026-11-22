@@ -277,3 +277,28 @@ func TestRefUpdateRejectsSymbolicReference(t *testing.T) {
 		t.Fatal("UpdateRef accepted a symbolic reference")
 	}
 }
+
+func TestRefListAllRefsIncludesRemoteAndNotesNamespaces(t *testing.T) {
+	store := ref.NewStore(t.TempDir())
+	remoteID := sha1.Digest{7}
+	noteID := sha1.Digest{8}
+	if err := store.WriteRef("refs/remotes/origin/main", remoteID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteRef("refs/notes/commits", noteID); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store.GitDir, "refs", "remotes", "origin", "main.lock"), []byte("in-progress"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := store.ListAllRefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refs["refs/remotes/origin/main"] != remoteID || refs["refs/notes/commits"] != noteID {
+		t.Fatalf("ListAllRefs omitted valid refs: %#v", refs)
+	}
+	if _, ok := refs["refs/remotes/origin/main.lock"]; ok {
+		t.Fatal("ListAllRefs included a lock file")
+	}
+}

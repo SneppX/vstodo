@@ -233,6 +233,42 @@ func (s *Store) ListRefs() (map[string]sha1.Digest, error) {
 	return out, nil
 }
 
+// ListAllRefs lists every regular reference under refs/, including remote-tracking
+// refs and namespaces such as notes. Lock files and symlinks are not references.
+func (s *Store) ListAllRefs() (map[string]sha1.Digest, error) {
+	out := make(map[string]sha1.Digest)
+	root := filepath.Join(s.GitDir, "refs")
+	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if strings.HasSuffix(rel, ".lock") {
+			return nil
+		}
+		name := "refs/" + filepath.ToSlash(rel)
+		id, err := s.ReadRef(name)
+		if err != nil {
+			return fmt.Errorf("ref: list %s: %w", name, err)
+		}
+		out[name] = id
+		return nil
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DeleteRef removes refName while holding its lock.
 func (s *Store) DeleteRef(refName string) error {
 	path, lock, err := s.acquireLock(refName)

@@ -64,7 +64,7 @@ func markReachable(a *app.App) (map[sha1.Digest]bool, error) {
 	} else if err != nil && !errors.Is(err, ref.ErrNotFound) && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	refs, err := a.Refs.ListRefs()
+	refs, err := a.Refs.ListAllRefs()
 	if err != nil {
 		return nil, err
 	}
