@@ -16,12 +16,12 @@ import (
 
 // Report summarizes a successful repository integrity check.
 type Report struct {
-	Objects	int
-	Blobs	int
-	Trees	int
-	Commits	int
-	Tags	int
-	References	int
+	Objects    int
+	Blobs      int
+	Trees      int
+	Commits    int
+	Tags       int
+	References int
 }
 
 // Check verifies every loose object's checksum, structure, and object links,
