@@ -16,6 +16,8 @@ import (
 	"vstodo/internal/sha1"
 )
 
+const maxCachedPackBytes uint64 = 64 << 20
+
 // PackStore keeps newly written objects loose and stores received packs
 // immutably under objects/pack. Pack files are published before their indexes;
 // an incomplete pair is therefore ignored by readers.
@@ -24,13 +26,14 @@ type PackStore struct {
 	ObjectsDir string
 	PacksDir   string
 
-	mu    sync.Mutex
-	cache map[string]*packfile.Pack
+	mu            sync.Mutex
+	cache         map[string]*packfile.Pack
+	maxCacheBytes uint64
 }
 
 // NewPackStore creates a pack-aware store around an existing loose store.
 func NewPackStore(loose *LooseStore, packsDir string) *PackStore {
-	return &PackStore{Loose: loose, ObjectsDir: loose.ObjectsDir, PacksDir: packsDir, cache: make(map[string]*packfile.Pack)}
+	return &PackStore{Loose: loose, ObjectsDir: loose.ObjectsDir, PacksDir: packsDir, cache: make(map[string]*packfile.Pack), maxCacheBytes: maxCachedPackBytes}
 }
 
 // Store preserves the normal append-only loose-object write path.
@@ -215,13 +218,29 @@ func (s *PackStore) findPack(id sha1.Digest) (*packfile.Pack, error) {
 	if _, ok := pack.Lookup(id); !ok {
 		return nil, fmt.Errorf("storage: index %s references an object missing from its pack", idxPath)
 	}
-	s.mu.Lock()
-	if existing := s.cache[packPath]; existing != nil {
-		pack = existing
-	} else {
-		s.cache[packPath] = pack
+	var decodedSize uint64
+	for _, packed := range pack.Objects {
+		size := uint64(len(packed.Data))
+		if size > s.maxCacheBytes-decodedSize {
+			decodedSize = s.maxCacheBytes + 1
+			break
+		}
+		decodedSize += size
 	}
-	s.mu.Unlock()
+	if decodedSize <= s.maxCacheBytes {
+		s.mu.Lock()
+		if existing := s.cache[packPath]; existing != nil {
+			pack = existing
+		} else {
+			// Keep at most one decoded pack. Large packs are decoded on demand
+			// but never retained, bounding long-lived cache memory.
+			for key := range s.cache {
+				delete(s.cache, key)
+			}
+			s.cache[packPath] = pack
+		}
+		s.mu.Unlock()
+	}
 	return pack, nil
 }
 
