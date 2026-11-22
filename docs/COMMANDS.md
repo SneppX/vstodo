@@ -218,9 +218,9 @@ vstodo gc [--dry-run|--prune]
 
 By default, report reachable and unreachable loose-object counts without
 changing the repository. `--prune` removes unreachable loose objects after
-marking HEAD, every reference under `refs/`, and stash history. It does not
-repack or delete objects from packfiles; persistent pack storage is not yet
-implemented.
+marking HEAD, every reference under `refs/`, and stash history. Packed objects
+are retained: garbage collection does not yet repack, expire, or delete
+packfiles. Use `vstodo fsck` to verify repository object and reference integrity.
 
 ### worktree
 
