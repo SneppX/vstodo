@@ -182,6 +182,27 @@ func TestPackStoreAllObjectsCachesParsedIndexes(t *testing.T) {
 	}
 }
 
+func TestPackStoreDoesNotCacheInvalidPackIndexes(t *testing.T) {
+	root := t.TempDir()
+	packsDir := filepath.Join(root, "objects", "pack")
+	if err := os.MkdirAll(packsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	indexPath := filepath.Join(packsDir, "pack-invalid.idx")
+	if err := os.WriteFile(indexPath, []byte("invalid index"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := NewPackStore(NewLooseStore(filepath.Join(root, "objects")), packsDir)
+
+	_, err := store.Has(object.ComputeID(object.BlobType, []byte("missing")))
+	if err == nil {
+		t.Fatal("Has accepted an invalid pack index")
+	}
+	if len(store.indexCache) != 0 {
+		t.Fatalf("invalid index cache contains %d entries, want 0", len(store.indexCache))
+	}
+}
+
 func TestPackStoreDoesNotRetainPacksAboveCacheBudget(t *testing.T) {
 	root := t.TempDir()
 	packsDir := filepath.Join(root, "objects", "pack")
