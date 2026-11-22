@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"vstodo/internal/object"
@@ -13,121 +16,144 @@ import (
 func TestStorageRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
-
 	obj := &object.Object{Type: object.BlobType, Data: []byte("loose store test data")}
+
 	id, err := store.Store(obj)
 	if err != nil {
 		t.Fatalf("Store: %v", err)
 	}
 	if id == sha1.Zero {
-		t.Fatalf("Store returned zero digest")
+		t.Fatal("Store returned zero digest")
 	}
 
 	ok, err := store.Has(id)
-	if err != nil {
-		t.Fatalf("Has: %v", err)
+	if err != nil || !ok {
+		t.Fatalf("Has = %v, %v; want true, nil", ok, err)
 	}
-	if !ok {
-		t.Fatalf("Has should be true after Store")
-	}
-
 	loaded, err := store.Load(id)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.Type != object.BlobType {
-		t.Fatalf("loaded type = %s, want %s", loaded.Type, object.BlobType)
-	}
-	if string(loaded.Data) != "loose store test data" {
-		t.Fatalf("loaded data = %q", string(loaded.Data))
-	}
-	if loaded.ID != id {
-		t.Fatalf("loaded.ID = %s, want %s", loaded.ID.Hex(), id.Hex())
+	if loaded.Type != obj.Type || !bytes.Equal(loaded.Data, obj.Data) || loaded.ID != id {
+		t.Fatalf("loaded object = %+v, want type %s and original data", loaded, obj.Type)
 	}
 
 	ok, err = store.Has(sha1.Zero)
-	if err != nil {
-		t.Fatalf("Has(zero): %v", err)
+	if err != nil || ok {
+		t.Fatalf("Has(zero) = %v, %v; want false, nil", ok, err)
 	}
-	if ok {
-		t.Fatalf("Has(zero) should be false")
+	raw, err := store.ReadObject(id)
+	if err != nil || !bytes.Equal(raw, obj.Data) {
+		t.Fatalf("ReadObject = %q, %v", raw, err)
 	}
 
-	// ReadObject / WriteRaw convenience
-	raw, err := store.ReadObject(id)
-	if err != nil {
-		t.Fatalf("ReadObject: %v", err)
-	}
-	if string(raw) != "loose store test data" {
-		t.Fatalf("ReadObject = %q", string(raw))
-	}
 	id2, err := store.WriteRaw(object.BlobType, []byte("raw payload"))
 	if err != nil {
 		t.Fatalf("WriteRaw: %v", err)
 	}
-	if ok, _ := store.Has(id2); !ok {
-		t.Fatalf("WriteRaw object not stored")
+	if ok, err := store.Has(id2); err != nil || !ok {
+		t.Fatalf("Has(WriteRaw) = %v, %v", ok, err)
 	}
 }
 
 func TestStoragePathLayout(t *testing.T) {
-	dir := t.TempDir()
-	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
-	obj := &object.Object{Type: object.BlobType, Data: []byte("path layout")}
-	id, _ := store.Store(obj)
-	path := filepath.Join(dir, "objects", id.Hex()[:2], id.Hex()[2:])
+	store := storage.NewLooseStore(filepath.Join(t.TempDir(), "objects"))
+	id, err := store.WriteRaw(object.BlobType, []byte("path layout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(store.ObjectsDir, id.Hex()[:2], id.Hex()[2:])
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("object not stored at expected path %s: %v", path, err)
 	}
 }
 
-func TestStorageConcurrentIDs(t *testing.T) {
-	dir := t.TempDir()
-	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
-	for i := 0; i < 50; i++ {
-		data := []byte{byte(i)}
-		obj := &object.Object{Type: object.BlobType, Data: data}
-		if _, err := store.Store(obj); err != nil {
-			t.Fatalf("Store(%d): %v", i, err)
+func TestStorageConcurrentSameObject(t *testing.T) {
+	store := storage.NewLooseStore(filepath.Join(t.TempDir(), "objects"))
+	obj := &object.Object{Type: object.BlobType, Data: []byte("same object from concurrent writers")}
+	const writers = 32
+
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := store.Store(obj)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("concurrent Store: %v", err)
 		}
 	}
-	// Verify all retrievable
-	for i := 0; i < 50; i++ {
-		id := object.HashBlob([]byte{byte(i)})
-		loaded, err := store.Load(id)
-		if err != nil {
-			t.Fatalf("Load(%d): %v", i, err)
-		}
-		if string(loaded.Data) != string([]byte{byte(i)}) {
-			t.Fatalf("data mismatch for %d", i)
-		}
+
+	id := object.HashBlob(obj.Data)
+	loaded, err := store.Load(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(loaded.Data, obj.Data) {
+		t.Fatalf("loaded data = %q", loaded.Data)
+	}
+	ids, err := store.Objects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != id {
+		t.Fatalf("Objects = %v, want only %s", ids, id.Hex())
 	}
 }
 
-func TestStorageRejectsObjectWithMismatchedContentHash(t *testing.T) {
-	dir := t.TempDir()
-	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
-	id, err := store.Store(&object.Object{Type: object.BlobType, Data: []byte("original")})
+func TestStoreRawRejectsMismatchedIDWithoutChangingObject(t *testing.T) {
+	store := storage.NewLooseStore(filepath.Join(t.TempDir(), "objects"))
+	original := []byte("original immutable payload")
+	id, err := store.WriteRaw(object.BlobType, original)
 	if err != nil {
-		t.Fatalf("Store: %v", err)
+		t.Fatal(err)
 	}
+	tampered, err := object.Compress(object.BlobType, []byte("tampered payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StoreRaw(id, tampered); err == nil {
+		t.Fatal("StoreRaw accepted bytes with a mismatched object ID")
+	}
+	loaded, err := store.Load(id)
+	if err != nil {
+		t.Fatalf("original object was damaged: %v", err)
+	}
+	if !bytes.Equal(loaded.Data, original) {
+		t.Fatalf("object changed to %q", loaded.Data)
+	}
+}
 
-	corrupt, err := object.Compress(object.BlobType, []byte("tampered"))
-	if err != nil {
-		t.Fatalf("Compress: %v", err)
+func TestStoreRawRejectsCorruptCompression(t *testing.T) {
+	store := storage.NewLooseStore(filepath.Join(t.TempDir(), "objects"))
+	id := object.HashBlob([]byte("anything"))
+	if err := store.StoreRaw(id, []byte("not zlib")); err == nil {
+		t.Fatal("StoreRaw accepted corrupt compression")
 	}
-	if err := store.StoreRaw(id, corrupt); err != nil {
-		t.Fatalf("StoreRaw: %v", err)
+}
+
+func TestStorageObjectsReturnsWalkErrors(t *testing.T) {
+	store := storage.NewLooseStore(filepath.Join(t.TempDir(), "missing"))
+	_, err := store.Objects()
+	if err == nil {
+		t.Fatal("Objects should report a missing object directory")
 	}
-	if _, err := store.Load(id); err == nil {
-		t.Fatal("Load succeeded for an object whose content does not match its object ID")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Objects error = %v, want os.ErrNotExist", err)
 	}
 }
 
 func TestStorageStoreIsIdempotent(t *testing.T) {
-	dir := t.TempDir()
-	store := storage.NewLooseStore(filepath.Join(dir, "objects"))
+	store := storage.NewLooseStore(filepath.Join(t.TempDir(), "objects"))
 	obj := &object.Object{Type: object.BlobType, Data: []byte("same immutable object")}
+
 	first, err := store.Store(obj)
 	if err != nil {
 		t.Fatalf("first Store: %v", err)

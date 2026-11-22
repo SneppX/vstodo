@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 )
 
-// LooseStore persists objects as loose files.
+// LooseStore persists objects as immutable loose files.
 type LooseStore struct {
 	ObjectsDir string
 }
@@ -22,7 +24,9 @@ func NewLooseStore(objectsDir string) *LooseStore {
 	return &LooseStore{ObjectsDir: objectsDir}
 }
 
-// Store writes obj (compressed) to disk.
+// Store writes obj as an immutable object. Publication uses a same-directory
+// temporary file and an atomic hard link, so readers never observe partial data
+// and concurrent writers cannot replace an existing object.
 func (s *LooseStore) Store(obj *object.Object) (sha1.Digest, error) {
 	if obj == nil {
 		return sha1.Zero, fmt.Errorf("storage: nil object")
@@ -32,42 +36,71 @@ func (s *LooseStore) Store(obj *object.Object) (sha1.Digest, error) {
 	if err != nil {
 		return id, err
 	}
-	path := s.objectPath(id)
-	if _, err := os.Stat(path); err == nil {
-		existing, loadErr := s.Load(id)
-		if loadErr != nil {
-			return id, fmt.Errorf("storage: existing object %s is invalid: %w", id.Hex(), loadErr)
-		}
-		if existing.Type != obj.Type || !bytes.Equal(existing.Data, obj.Data) {
-			return id, fmt.Errorf("storage: object ID collision for %s", id.Hex())
-		}
-		return id, nil
-	} else if !os.IsNotExist(err) {
-		return id, err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return id, err
-	}
-	if err := os.WriteFile(path, compressed, 0o444); err != nil {
+	if err := s.storeCompressed(id, compressed, obj.Type, obj.Data); err != nil {
 		return id, err
 	}
 	return id, nil
 }
 
-// Load reads and decompresses the object for id.
-func (s *LooseStore) Load(id sha1.Digest) (*object.Object, error) {
+// storeCompressed atomically publishes validated compressed object bytes.
+func (s *LooseStore) storeCompressed(id sha1.Digest, compressed []byte, typ object.Type, data []byte) error {
 	path := s.objectPath(id)
-	compressed, err := os.ReadFile(path)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("storage: create object directory: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".vstodo-object-*")
+	if err != nil {
+		return fmt.Errorf("storage: create temporary object: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmp.Write(compressed); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("storage: write temporary object: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("storage: sync temporary object: %w", err)
+	}
+	if err := tmp.Chmod(0o444); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("storage: set object permissions: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("storage: close temporary object: %w", err)
+	}
+
+	if err := os.Link(tmpPath, path); err == nil {
+		return nil
+	} else if !os.IsExist(err) {
+		return fmt.Errorf("storage: atomically publish object %s: %w", id.Hex(), err)
+	}
+
+	existing, err := s.Load(id)
+	if err != nil {
+		return fmt.Errorf("storage: existing object %s is invalid: %w", id.Hex(), err)
+	}
+	if existing.Type != typ || !bytes.Equal(existing.Data, data) {
+		return fmt.Errorf("storage: object ID collision for %s", id.Hex())
+	}
+	return nil
+}
+
+// Load reads, decompresses, and verifies the object for id.
+func (s *LooseStore) Load(id sha1.Digest) (*object.Object, error) {
+	compressed, err := os.ReadFile(s.objectPath(id))
 	if err != nil {
 		return nil, err
 	}
 	raw, err := object.Decompress(compressed)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("storage: decompress object %s: %w", id.Hex(), err)
 	}
 	typ, data, err := object.Unmarshal(raw)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("storage: decode object %s: %w", id.Hex(), err)
 	}
 	actualID := object.ComputeID(typ, data)
 	if actualID != id {
@@ -94,41 +127,36 @@ func (s *LooseStore) objectPath(id sha1.Digest) string {
 	return filepath.Join(s.ObjectsDir, h[:2], h[2:])
 }
 
-// Objects enumerates every object id present in the loose store.
-// Useful for copying a store wholesale (e.g. local clone).
+// Objects enumerates validly named regular loose-object files in stable order.
+// Filesystem traversal errors are returned rather than silently discarded.
 func (s *LooseStore) Objects() ([]sha1.Digest, error) {
 	var out []sha1.Digest
-	_ = filepath.WalkDir(s.ObjectsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err := filepath.WalkDir(s.ObjectsDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		if d.IsDir() {
-			return nil
-		}
-		if len(d.Name()) != 38 {
+		if d.IsDir() || !d.Type().IsRegular() {
 			return nil
 		}
 		rel, err := filepath.Rel(s.ObjectsDir, path)
 		if err != nil {
 			return err
 		}
-		// rel is "<2><sep><38>"; remove separators to form the 40-hex hash.
-		h := ""
-		for _, r := range rel {
-			if r != '\\' && r != '/' {
-				h += string(r)
-			}
-		}
-		if len(h) != 40 {
+		parts := strings.Split(rel, string(filepath.Separator))
+		if len(parts) != 2 || len(parts[0]) != 2 || len(parts[1]) != 38 {
 			return nil
 		}
-		id, err := sha1.FromHex(h)
+		id, err := sha1.FromHex(parts[0] + parts[1])
 		if err != nil {
 			return nil
 		}
 		out = append(out, id)
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: enumerate objects: %w", err)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Hex() < out[j].Hex() })
 	return out, nil
 }
 
@@ -146,24 +174,24 @@ func (s *LooseStore) ReadRaw(id sha1.Digest) ([]byte, error) {
 	return os.ReadFile(s.objectPath(id))
 }
 
-// StoreRaw writes compressed on-disk bytes for id directly, preserving the
-// content-addressed path without re-hashing.
+// StoreRaw validates compressed bytes against id before atomically storing them.
+// Existing immutable objects are never overwritten.
 func (s *LooseStore) StoreRaw(id sha1.Digest, compressed []byte) error {
-	path := s.objectPath(id)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+	raw, err := object.Decompress(compressed)
+	if err != nil {
+		return fmt.Errorf("storage: invalid compressed object: %w", err)
 	}
-	if err := os.Chmod(path, 0o644); err != nil && !os.IsNotExist(err) {
-		return err
+	typ, data, err := object.Unmarshal(raw)
+	if err != nil {
+		return fmt.Errorf("storage: invalid object payload: %w", err)
 	}
-	if err := os.WriteFile(path, compressed, 0o644); err != nil {
-		return err
+	if actual := object.ComputeID(typ, data); actual != id {
+		return fmt.Errorf("storage: object ID mismatch: requested %s, content hashes to %s", id.Hex(), actual.Hex())
 	}
-	return os.Chmod(path, 0o444)
+	return s.storeCompressed(id, compressed, typ, data)
 }
 
 // WriteRaw stores raw payload as type and returns digest.
 func (s *LooseStore) WriteRaw(typ object.Type, data []byte) (sha1.Digest, error) {
-	obj := &object.Object{Type: typ, Data: data}
-	return s.Store(obj)
+	return s.Store(&object.Object{Type: typ, Data: data})
 }
