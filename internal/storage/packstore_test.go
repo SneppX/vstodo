@@ -155,6 +155,33 @@ func TestPackStoreCachesParsedPackIndexesConcurrently(t *testing.T) {
 	}
 }
 
+func TestPackStoreAllObjectsCachesParsedIndexes(t *testing.T) {
+	root := t.TempDir()
+	packsDir := filepath.Join(root, "objects", "pack")
+	want := &object.Object{Type: object.BlobType, Data: []byte("enumerated cached pack index")}
+	packBytes, _, err := packfile.NewPackWriter(want).WritePack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewPackStore(NewLooseStore(filepath.Join(root, "objects")), packsDir)
+	if _, err := store.StorePack(packBytes); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 2; i++ {
+		ids, err := store.AllObjects()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ids) != 1 || ids[0] != object.ComputeID(want.Type, want.Data) {
+			t.Fatalf("AllObjects() = %v, want the packed object ID", ids)
+		}
+	}
+	if len(store.indexCache) != 1 {
+		t.Fatalf("parsed index cache contains %d entries, want 1", len(store.indexCache))
+	}
+}
+
 func TestPackStoreDoesNotRetainPacksAboveCacheBudget(t *testing.T) {
 	root := t.TempDir()
 	packsDir := filepath.Join(root, "objects", "pack")
