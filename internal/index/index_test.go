@@ -85,3 +85,26 @@ func TestIndexRejectsChecksumCorruption(t *testing.T) {
 		t.Fatal("Load accepted corrupted checksum")
 	}
 }
+
+func TestIndexSaveHonorsExistingLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index")
+	original := []byte("previous index")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".lock", []byte("another writer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx := NewIndex(path)
+	idx.Add("file.txt", object.HashBlob([]byte("new content")))
+	if err := idx.Save(); err == nil {
+		t.Fatal("Save succeeded while another writer held the index lock")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("existing index was modified: %q", got)
+	}
+}

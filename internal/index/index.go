@@ -9,9 +9,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 
+	"vstodo/internal/lockfile"
 	"vstodo/internal/sha1"
 )
 
@@ -147,9 +147,6 @@ func (idx *Index) loadBinary(data []byte) error {
 }
 
 func (idx *Index) Save() error {
-	if err := os.MkdirAll(filepath.Dir(idx.path), 0o755); err != nil {
-		return err
-	}
 	paths := make([]string, 0, len(idx.entries))
 	for path := range idx.entries {
 		paths = append(paths, path)
@@ -188,7 +185,12 @@ func (idx *Index) Save() error {
 	}
 	sum := cryptoSHA1.Sum(buf.Bytes())
 	buf.Write(sum[:])
-	return os.WriteFile(idx.path, buf.Bytes(), 0o644)
+	lock, err := lockfile.Acquire(idx.path, 0o644)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	return lock.Commit(buf.Bytes())
 }
 
 func (idx *Index) Add(path string, d sha1.Digest) {

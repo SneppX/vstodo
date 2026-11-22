@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"vstodo/internal/lockfile"
 	"vstodo/internal/sha1"
 )
 
@@ -16,7 +17,7 @@ import (
 var ErrNotFound = errors.New("ref not found")
 
 // ErrLockExists indicates another writer owns the reference lock.
-var ErrLockExists = errors.New("reference lock exists")
+var ErrLockExists = lockfile.ErrLocked
 
 // Store persists refs under a gitDir.
 type Store struct {
@@ -104,52 +105,29 @@ func (s *Store) readRef(refName string, seen map[string]bool, depth int) (sha1.D
 }
 
 // acquireLock creates the Git-compatible <ref>.lock file exclusively.
-func (s *Store) acquireLock(refName string) (path, lockPath string, file *os.File, err error) {
-	path, err = s.refPath(refName)
+func (s *Store) acquireLock(refName string) (string, *lockfile.Lock, error) {
+	path, err := s.refPath(refName)
 	if err != nil {
-		return "", "", nil, err
+		return "", nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", "", nil, fmt.Errorf("ref: create parent directory: %w", err)
-	}
-	lockPath = path + ".lock"
-	file, err = os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	lock, err := lockfile.Acquire(path, 0o644)
 	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return "", "", nil, fmt.Errorf("%w: %s", ErrLockExists, refName)
+		if errors.Is(err, lockfile.ErrLocked) {
+			return "", nil, fmt.Errorf("%w: %s", ErrLockExists, refName)
 		}
-		return "", "", nil, fmt.Errorf("ref: acquire lock for %s: %w", refName, err)
+		return "", nil, fmt.Errorf("ref: acquire lock for %s: %w", refName, err)
 	}
-	return path, lockPath, file, nil
-}
-
-// publishLock writes, syncs, closes, and atomically publishes a locked ref.
-func publishLock(path, lockPath string, file *os.File, content []byte) error {
-	defer os.Remove(lockPath)
-	if _, err := file.Write(content); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("ref: write lock file: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("ref: sync lock file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("ref: close lock file: %w", err)
-	}
-	if err := os.Rename(lockPath, path); err != nil {
-		return fmt.Errorf("ref: publish reference: %w", err)
-	}
-	return nil
+	return path, lock, nil
 }
 
 // WriteRef atomically sets refName to digest (non-symbolic).
 func (s *Store) WriteRef(refName string, d sha1.Digest) error {
-	path, lockPath, file, err := s.acquireLock(refName)
+	_, lock, err := s.acquireLock(refName)
 	if err != nil {
 		return err
 	}
-	return publishLock(path, lockPath, file, []byte(d.Hex()+"\n"))
+	defer lock.Close()
+	return lock.Commit([]byte(d.Hex() + "\n"))
 }
 
 // WriteRefSymbolic atomically makes refName point to another ref.
@@ -157,11 +135,12 @@ func (s *Store) WriteRefSymbolic(refName, target string) error {
 	if err := validateRefName(target); err != nil {
 		return fmt.Errorf("ref: invalid symbolic target: %w", err)
 	}
-	path, lockPath, file, err := s.acquireLock(refName)
+	_, lock, err := s.acquireLock(refName)
 	if err != nil {
 		return err
 	}
-	return publishLock(path, lockPath, file, []byte("ref: "+target+"\n"))
+	defer lock.Close()
+	return lock.Commit([]byte("ref: " + target + "\n"))
 }
 
 // Head returns the digest HEAD points to, resolving symbolic refs.
@@ -213,15 +192,11 @@ func (s *Store) ListRefs() (map[string]sha1.Digest, error) {
 
 // DeleteRef removes refName while holding its lock.
 func (s *Store) DeleteRef(refName string) error {
-	path, lockPath, file, err := s.acquireLock(refName)
+	path, lock, err := s.acquireLock(refName)
 	if err != nil {
 		return err
 	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(lockPath)
-		return fmt.Errorf("ref: close deletion lock: %w", err)
-	}
-	defer os.Remove(lockPath)
+	defer lock.Close()
 	if err := os.Remove(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("%w: %s", ErrNotFound, refName)
