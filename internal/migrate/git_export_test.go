@@ -212,3 +212,141 @@ func TestExportGitReportsAlreadyUpToDate(t *testing.T) {
 		t.Fatalf("expected an up-to-date no-op, got %+v", report)
 	}
 }
+
+
+func TestInspectGitReportsSynchronizedBranchWithoutMutation(t *testing.T) {
+	root := makeRealGitRepoForExport(t)
+	if _, err := Adopt(root); err != nil {
+		t.Fatal(err)
+	}
+	report, err := InspectGit(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.BranchMatch || !report.SameCommit || report.GitCommit == "" || report.VSTodoCommit != report.GitCommit {
+		t.Fatalf("unexpected Git status: %+v", report)
+	}
+}
+
+func TestSyncGitFastForwardsVSTodoAndPreservesGitState(t *testing.T) {
+	root := makeRealGitRepoForExport(t)
+	if _, err := Adopt(root); err != nil {
+		t.Fatal(err)
+	}
+	gitConfigBefore, err := os.ReadFile(filepath.Join(root, ".git", "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitIndexBefore, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vstodoIndexPath := filepath.Join(root, ".vstodo", "index")
+	vstodoIndexBefore, _ := os.ReadFile(vstodoIndexPath)
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("new Git-side commit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "add", "README.md")
+	runGit(t, root, "commit", "-m", "Git-side commit after adoption")
+	gitHead := runGit(t, root, "rev-parse", "HEAD")
+	workingBefore, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := SyncGit(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Updated || report.VSTodoAhead || report.GitCommit != gitHead || report.ObjectsImported == 0 {
+		t.Fatalf("unexpected sync report: %+v", report)
+	}
+	a, err := app.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vstodoHead, err := a.Refs.ReadRef("refs/heads/main")
+	if err != nil || vstodoHead.Hex() != gitHead {
+		t.Fatalf("VSTodo HEAD = %s, err=%v; want %s", vstodoHead.Hex(), err, gitHead)
+	}
+	if got := runGit(t, root, "rev-parse", "HEAD"); got != gitHead {
+		t.Fatalf("Git HEAD changed: %s != %s", got, gitHead)
+	}
+	gitConfigAfter, _ := os.ReadFile(filepath.Join(root, ".git", "config"))
+	gitIndexAfter, _ := os.ReadFile(filepath.Join(root, ".git", "index"))
+	vstodoIndexAfter, _ := os.ReadFile(vstodoIndexPath)
+	workingAfter, _ := os.ReadFile(filepath.Join(root, "README.md"))
+	if string(gitConfigBefore) != string(gitConfigAfter) || string(gitIndexBefore) != string(gitIndexAfter) {
+		t.Fatal("sync-git modified Git config or index")
+	}
+	if string(vstodoIndexBefore) != string(vstodoIndexAfter) {
+		t.Fatal("sync-git modified the VSTodo index")
+	}
+	if string(workingBefore) != string(workingAfter) {
+		t.Fatal("sync-git modified working files")
+	}
+}
+
+func TestSyncGitLeavesVSTodoAheadUnchanged(t *testing.T) {
+	root := makeRealGitRepoForExport(t)
+	if _, err := Adopt(root); err != nil {
+		t.Fatal(err)
+	}
+	vstodoHead := createVSTodoCommitForExport(t, root)
+	gitHeadBefore := runGit(t, root, "rev-parse", "HEAD")
+	report, err := SyncGit(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Updated || !report.VSTodoAhead {
+		t.Fatalf("expected VSTodo-ahead no-op, got %+v", report)
+	}
+	if got := runGit(t, root, "rev-parse", "HEAD"); got != gitHeadBefore {
+		t.Fatalf("Git HEAD changed: %s != %s", got, gitHeadBefore)
+	}
+	a, err := app.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := a.Refs.ReadRef("refs/heads/main"); err != nil || got != vstodoHead {
+		t.Fatalf("VSTodo HEAD changed: %s, err=%v", got.Hex(), err)
+	}
+}
+
+func TestSyncGitRejectsDivergedHistoryWithoutChangingRefs(t *testing.T) {
+	root := makeRealGitRepoForExport(t)
+	if _, err := Adopt(root); err != nil {
+		t.Fatal(err)
+	}
+	vstodoHead := createVSTodoCommitForExport(t, root)
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("independent Git-side commit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "add", "README.md")
+	runGit(t, root, "commit", "-m", "independent Git-side commit")
+	gitHead := runGit(t, root, "rev-parse", "HEAD")
+	if _, err := SyncGit(root, ""); err == nil || !strings.Contains(err.Error(), "diverged") {
+		t.Fatalf("expected divergence refusal, got %v", err)
+	}
+	a, err := app.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := a.Refs.ReadRef("refs/heads/main"); err != nil || got != vstodoHead {
+		t.Fatalf("VSTodo ref changed after rejected sync: %s, err=%v", got.Hex(), err)
+	}
+	if got := runGit(t, root, "rev-parse", "HEAD"); got != gitHead {
+		t.Fatalf("Git ref changed after rejected sync: %s != %s", got, gitHead)
+	}
+}
+
+func TestSyncGitRejectsMismatchedBranches(t *testing.T) {
+	root := makeRealGitRepoForExport(t)
+	if _, err := Adopt(root); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "checkout", "-b", "git-side")
+	if _, err := SyncGit(root, ""); err == nil || !strings.Contains(err.Error(), "but VSTodo is on") {
+		t.Fatalf("expected branch mismatch refusal, got %v", err)
+	}
+}
