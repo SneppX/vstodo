@@ -73,8 +73,11 @@ interoperability coverage is still in progress.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and pull request instructions.
 
 ## License
+
 VSTodo is licensed under the [MIT License](LICENSE).
+
 ---
+
 **VSTodo — Version control, built differently.**
 
 
