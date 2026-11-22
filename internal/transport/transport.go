@@ -13,7 +13,6 @@ import (
 	"vstodo/internal/object"
 	"vstodo/internal/ref"
 	"vstodo/internal/sha1"
-	"vstodo/internal/storage"
 )
 
 // Transport copies objects and refs between repositories.
