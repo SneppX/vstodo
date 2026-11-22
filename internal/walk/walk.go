@@ -2,6 +2,9 @@
 package walk
 
 import (
+	"fmt"
+
+	"vstodo/internal/commit"
 	"vstodo/internal/object"
 	"vstodo/internal/sha1"
 )
@@ -11,20 +14,37 @@ type Walker struct {
 	Load func(sha1.Digest) (*object.Object, error)
 }
 
-// History walks first-parent history from start.
+// History walks the full commit graph reachable from start, following all
+// parents in breadth-first order. The returned slice includes start when
+// present and contains no duplicates.
 func (w *Walker) History(start sha1.Digest) ([]sha1.Digest, error) {
+	if w.Load == nil {
+		return nil, fmt.Errorf("walk: nil Load")
+	}
 	var out []sha1.Digest
 	seen := make(map[sha1.Digest]bool)
-	cur := start
-	for cur != sha1.Zero {
-		if seen[cur] {
-			break
+	queue := []sha1.Digest{start}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur == sha1.Zero || seen[cur] {
+			continue
 		}
 		seen[cur] = true
 		out = append(out, cur)
-		cur = sha1.Zero
-		_ = w.Load
-		_ = object.BlobType
+		obj, err := w.Load(cur)
+		if err != nil {
+			return nil, err
+		}
+		c, err := commit.Parse(cur, obj.Data)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range c.Parents {
+			if !seen[p] {
+				queue = append(queue, p)
+			}
+		}
 	}
 	return out, nil
 }
