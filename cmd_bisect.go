@@ -436,13 +436,26 @@ func countCandidates(a *app.App, bad sha1.Digest, goods []sha1.Digest) int {
 }
 
 func resolveCommitish(a *app.App, s string) (sha1.Digest, error) {
+	if s == "HEAD" {
+		id, err := currentCommitID(a)
+		if err != nil || id == sha1.Zero {
+			return sha1.Zero, fmt.Errorf("cannot resolve %s", s)
+		}
+		return id, nil
+	}
+	if d, err := a.Refs.ReadRef("refs/heads/" + s); err == nil {
+		return d, nil
+	}
+	if d, err := a.Refs.ReadRef("refs/tags/" + s); err == nil {
+		return d, nil
+	}
+	if d, err := a.Refs.ReadRef("refs/remotes/" + s); err == nil {
+		return d, nil
+	}
 	if d, err := sha1.FromHex(s); err == nil {
 		if ok, _ := a.Store.Has(d); ok {
 			return d, nil
 		}
-	}
-	if d, err := a.Refs.ReadRef("refs/heads/" + s); err == nil {
-		return d, nil
 	}
 	return sha1.Zero, fmt.Errorf("cannot resolve %s", s)
 }
