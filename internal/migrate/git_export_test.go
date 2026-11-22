@@ -350,7 +350,6 @@ func TestSyncGitRejectsMismatchedBranches(t *testing.T) {
 	}
 }
 
-
 func TestSyncGitRefLockPreventsConcurrentUpdate(t *testing.T) {
 	root := makeRealGitRepoForExport(t)
 	if _, err := Adopt(root); err != nil {
