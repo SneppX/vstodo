@@ -47,6 +47,7 @@ vstodo status
 
 Show the working tree status: the current branch, whether the index is clean or
 has staged changes, and a list of staged files with their blob digests.
+Working tree scans respect `.vstodoignore` patterns when present.
 
 ### log
 
