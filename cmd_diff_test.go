@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"vstodo/internal/commit"
 )
 
 func TestCmdDiffUsage(t *testing.T) {
@@ -33,5 +35,41 @@ func TestResolveCommitish(t *testing.T) {
 	byHex, err := resolveCommitish(a, theirsID.Hex())
 	if err != nil || byHex != theirsID {
 		t.Fatalf("hex: got %v %v, want %s", byHex, err, theirsID.Hex())
+	}
+}
+
+func TestCmdDiffContentBetweenCommits(t *testing.T) {
+	a, _, oursID, _ := makeMergeFixture(t,
+		map[string]string{"file.txt": "line1\nline2\n"},
+		map[string]string{"file.txt": "line1\nchanged\n"},
+		map[string]string{"other.txt": "x\n"},
+	)
+	oursObj, err := a.Store.Load(oursID)
+	if err != nil {
+		t.Fatalf("load ours: %v", err)
+	}
+	oursCommit, err := commit.Parse(oursID, oursObj.Data)
+	if err != nil {
+		t.Fatalf("parse ours: %v", err)
+	}
+	if len(oursCommit.Parents) == 0 {
+		t.Fatal("expected parent")
+	}
+	baseID := oursCommit.Parents[0]
+
+	out, err := captureStdout(t, func() error {
+		return cmdDiff(a, []string{baseID.Hex(), oursID.Hex()})
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff: %v", err)
+	}
+	if !strings.Contains(out, "diff --git a/file.txt b/file.txt") {
+		t.Fatalf("missing diff header:\n%s", out)
+	}
+	if !strings.Contains(out, "--- a/file.txt") || !strings.Contains(out, "+++ b/file.txt") {
+		t.Fatalf("missing unified headers:\n%s", out)
+	}
+	if !strings.Contains(out, "-line2") || !strings.Contains(out, "+changed") {
+		t.Fatalf("missing change lines:\n%s", out)
 	}
 }
