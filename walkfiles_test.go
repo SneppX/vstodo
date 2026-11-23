@@ -59,3 +59,31 @@ func TestWalkFilesExcludesDefaultMetadataDirectory(t *testing.T) {
 		t.Fatalf("walkFiles returned %v, want [main.go]", files)
 	}
 }
+
+func TestWalkFilesRespectsVSTodoIgnore(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(repo.EnvOverride, "")
+	for path, content := range map[string]string{
+		".vstodoignore": "ignored.log\nbuild/\n",
+		"keep.txt":      "keep",
+		"ignored.log":   "skip",
+		"build/out.o":   "skip",
+		"src/app.go":    "keep",
+	} {
+		full := filepath.Join(root, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := walkFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".vstodoignore", "keep.txt", "src/app.go"}
+	if !reflect.DeepEqual(files, want) {
+		t.Fatalf("walkFiles returned %v, want %v", files, want)
+	}
+}

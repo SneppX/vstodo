@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -28,6 +29,73 @@ func readBlob(a *app.App, id sha1.Digest) ([]byte, error) {
 	return obj.Data, nil
 }
 
+type ignorePattern struct {
+	pattern string
+	dirOnly bool
+	negated bool
+	base    bool
+}
+
+func loadIgnorePatterns(root string) []ignorePattern {
+	data, err := os.ReadFile(filepath.Join(root, ".vstodoignore"))
+	if err != nil {
+		return nil
+	}
+	var out []ignorePattern
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		negated := strings.HasPrefix(line, "!")
+		if negated {
+			line = line[1:]
+		}
+		dirOnly := strings.HasSuffix(line, "/")
+		if dirOnly {
+			line = strings.TrimRight(line, "/")
+		}
+		line = filepath.ToSlash(line)
+		line = strings.TrimPrefix(line, "./")
+		if line == "" {
+			continue
+		}
+		out = append(out, ignorePattern{
+			pattern: line,
+			dirOnly: dirOnly,
+			negated: negated,
+			base:    !strings.Contains(line, "/"),
+		})
+	}
+	return out
+}
+
+func matchIgnore(pattern, name string) bool {
+	matched, err := path.Match(pattern, name)
+	return err == nil && matched
+}
+
+func isIgnored(patterns []ignorePattern, rel string, isDir bool) bool {
+	rel = filepath.ToSlash(rel)
+	base := path.Base(rel)
+	ignored := false
+	for _, p := range patterns {
+		if p.dirOnly && !isDir {
+			continue
+		}
+		var matched bool
+		if p.base {
+			matched = matchIgnore(p.pattern, base)
+		} else {
+			matched = matchIgnore(p.pattern, rel)
+		}
+		if matched {
+			ignored = !p.negated
+		}
+	}
+	return ignored
+}
+
 // walkFiles returns all regular files under root, relative paths.
 func walkFiles(root string) ([]string, error) {
 	var out []string
@@ -41,6 +109,7 @@ func walkFiles(root string) ([]string, error) {
 		!strings.HasPrefix(metadataRel, ".."+string(filepath.Separator)) && !filepath.IsAbs(metadataRel)
 	metadataRel = filepath.ToSlash(filepath.Clean(metadataRel))
 
+	patterns := loadIgnorePatterns(root)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -51,10 +120,16 @@ func walkFiles(root string) ([]string, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
+			if rel == "." {
+				return nil
+			}
 			if rel == ".git" {
 				return fs.SkipDir
 			}
 			if excludeMetadata && rel == metadataRel {
+				return fs.SkipDir
+			}
+			if isIgnored(patterns, rel, true) {
 				return fs.SkipDir
 			}
 			return nil
@@ -63,6 +138,9 @@ func walkFiles(root string) ([]string, error) {
 			return nil
 		}
 		if excludeMetadata && strings.HasPrefix(rel, metadataRel+"/") {
+			return nil
+		}
+		if isIgnored(patterns, rel, false) {
 			return nil
 		}
 		out = append(out, rel)
