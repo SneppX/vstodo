@@ -51,11 +51,12 @@ has staged changes, and a list of staged files with their blob digests.
 ### log
 
 ```
-vstodo log
+vstodo log [-n <count>] [--max-count=<count>]
 ```
 
 Show first-parent commit history starting at HEAD. For each commit prints the
-full SHA-1, author, date, and message.
+full SHA-1, author, date, and message. `-n <count>` or `--max-count=<count>`
+limits output to the most recent `count` commits.
 
 ### branch
 
