@@ -73,3 +73,31 @@ func TestCmdDiffContentBetweenCommits(t *testing.T) {
 		t.Fatalf("missing change lines:\n%s", out)
 	}
 }
+
+func TestCmdDiffIndexVsHead(t *testing.T) {
+	a, _, oursID, _ := makeMergeFixture(t,
+		map[string]string{"file.txt": "old\n"},
+		map[string]string{"file.txt": "old\n"},
+		map[string]string{"other.txt": "x\n"},
+	)
+	_ = oursID
+	if err := ensureIndexFromHEAD(a); err != nil {
+		t.Fatalf("ensureIndexFromHEAD: %v", err)
+	}
+	blobData := []byte("new\n")
+	id, err := a.Store.WriteRaw("blob", blobData)
+	if err != nil {
+		t.Fatalf("WriteRaw: %v", err)
+	}
+	a.Index.Add("file.txt", id)
+	if err := a.SaveIndex(); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+	out, err := captureStdout(t, func() error { return cmdDiff(a, nil) })
+	if err != nil {
+		t.Fatalf("cmdDiff: %v", err)
+	}
+	if !strings.Contains(out, "-old") || !strings.Contains(out, "+new") {
+		t.Fatalf("expected unified diff, got:\n%s", out)
+	}
+}
