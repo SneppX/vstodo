@@ -6,7 +6,6 @@ import (
 	"vstodo/internal/app"
 	"vstodo/internal/commit"
 	"vstodo/internal/object"
-	"vstodo/internal/sha1"
 	"vstodo/internal/tree"
 )
 
@@ -15,7 +14,7 @@ func cmdShow(a *app.App, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: vstodo show <object>")
 	}
-	id, err := sha1.FromHex(args[0])
+	id, err := resolveCommitish(a, args[0])
 	if err != nil {
 		return err
 	}
