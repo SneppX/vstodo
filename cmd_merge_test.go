@@ -113,3 +113,18 @@ func TestMergeConflictLeavesRepositoryUnchanged(t *testing.T) {
 		t.Fatalf("worktree changed after conflict: data=%q err=%v", data, err)
 	}
 }
+
+func TestMergeAcceptsCommitish(t *testing.T) {
+	a, root, _, theirsID := makeMergeFixture(t,
+		map[string]string{"left.txt": "base\n", "right.txt": "base\n"},
+		map[string]string{"left.txt": "ours\n", "right.txt": "base\n"},
+		map[string]string{"left.txt": "base\n", "right.txt": "theirs\n"},
+	)
+	if err := cmdMerge(a, []string{theirsID.Hex()}); err != nil {
+		t.Fatalf("merge by hex: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "right.txt"))
+	if err != nil || string(data) != "theirs\n" {
+		t.Fatalf("right.txt = %q, err=%v", data, err)
+	}
+}

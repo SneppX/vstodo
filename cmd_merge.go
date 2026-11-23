@@ -28,12 +28,9 @@ func cmdMerge(a *app.App, args []string) error {
 	if err != nil || currentBranch == "" {
 		return fmt.Errorf("cannot merge while HEAD is detached")
 	}
-	otherID, err := a.Refs.ReadRef("refs/heads/" + branch)
+	otherID, err := resolveCommitish(a, branch)
 	if err != nil {
-		otherID, err = a.Refs.ReadRef("refs/remotes/" + branch)
-	}
-	if err != nil {
-		return fmt.Errorf("no such local or remote-tracking branch: %s", branch)
+		return fmt.Errorf("merge: %w", err)
 	}
 	if otherID == currentID {
 		fmt.Println("Already up to date.")
