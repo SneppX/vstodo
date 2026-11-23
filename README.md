@@ -59,7 +59,7 @@ support force updates, tags, or multiple refs in one operation.
 
 VSTodo is distributed as a Go binary.
 
-- **Go install:** `go install github.com/SneppX/vstodo@v0.1.1`
+- **Go install:** `go install github.com/SneppX/vstodo@v0.1.2`
 - **GitHub Releases:** prebuilt binaries via GoReleaser automation (tag-triggered workflow).
 
 ## Project Status
