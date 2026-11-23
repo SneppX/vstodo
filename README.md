@@ -55,6 +55,14 @@ fast-forward-only branch push, and fetch-plus-merge pull. For GitHub authenticat
 `VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN` in the environment. Pushes do not yet
 support force updates, tags, or multiple refs in one operation.
 
+## Installation
+
+VSTodo is distributed as a Go binary.
+
+- **Go install:** `go install github.com/SneppX/vstodo@latest`
+- **npm:** `npm install -g vstodo` (wrapper downloads GitHub Release binaries; see [npm/README.md](npm/README.md))
+- **GitHub Releases:** prebuilt binaries via GoReleaser automation (tag-triggered workflow).
+
 ## Project Status
 
 VSTodo is under active development. Its local version-control workflows and
