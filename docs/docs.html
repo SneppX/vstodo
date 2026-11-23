@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VSTodo — Documentation</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="logo">VSTodo</div>
+      <nav>
+        <ul>
+          <li><a href="index.html">Back to Site</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main>
+      <section id="quick-start">
+        <h2>Quick Start</h2>
+        <ol>
+          <li><strong>Install</strong>: <code>go install github.com/SneppX/vstodo@latest</code></li>
+          <li><strong>Initialize</strong>: <code>vstodo init</code> (creates <code>.vstodo/</code>)</li>
+          <li><strong>Add files</strong>: <code>vstodo add <em>file</em></code></li>
+          <li><strong>Commit</strong>: <code>vstodo commit -m "message"</code></li>
+          <li><strong>Check status</strong>: <code>vstodo status</code></li>
+          <li><strong>View history</strong>: <code>vstodo log</code></li>
+        </ol>
+      </section>
+
+      <section id="commands">
+        <h2>CLI Reference</h2>
+        <ul>
+          <li><code>vstodo init</code> — Initialize a new VSTodo repository</li>
+          <li><code>vstodo add <file></code> — Stage file contents to the index</li>
+          <li><code>vstodo commit -m <message></code> — Record changes to the repository</li>
+          <li><code>vstodo status</code> — Show working tree status</li>
+          <li><code>vstodo diff</code> — Show unified content diffs</li>
+          <li><code>vstodo log</code> — Show commit history</li>
+          <li><code>vstodo branch</code> — List, create, or delete branches</li>
+          <li><code>vstodo checkout <branch></code> — Switch branches or restore files</li>
+          <li><code>vstodo merge <branch></code> — Merge changes from another branch</li>
+          <li><code>vstodo tag <name></code> — Create, list, or delete tags</li>
+          <li><code>vstodo diff</code> — Show unified diffs between commits/index/working tree</li>
+          <li><code>vstodo status</code> — Show working tree status</li>
+          <li><code>vstodo reset <commit></code> — Reset current HEAD to the specified state</li>
+          <li><code>vstodo log</code> — Show commit history</li>
+          <li><code>vstodo diff</code> — Unified content diff output</li>
+        </ul>
+      </section>
+
+      <section id="installation">
+        <h2>Installation Guide</h2>
+        <h3>Option 1: go install (Recommended)</h3>
+        <pre><code>go install github.com/SneppX/vstodo@latest</code></pre>
+        <p>This downloads the latest release and installs <code>vstodo</code>/<code>vstodo.exe</code> to your <code>GOBIN</code> directory, which should be in your <code>PATH</code>.</p>
+
+        <h3>Option 2: Manual Binary</h3>
+        <ol>
+          <li>Download the latest release from <a href="https://github.com/SneppX/vstodo/releases">GitHub Releases</a></li>
+          <li>Extract the archive (<code>.zip</code> for Windows, <code>.tar.gz</code> for macOS/Linux)</li>
+          <li>Place the <code>vstodo</code>/<code>vstodo.exe</code> binary in a directory on your <code>PATH</code></li>
+          <li>Verify: <code>vstodo --version</code></li>
+        </ol>
+      </section>
+
+      <section id="verification">
+        <h2>Verification</h2>
+        <p>After installation, run:</p>
+        <pre><code>vstodo --version</code>
+        <code>vstodo -version</code>
+        <code>vstodo status</code></pre>
+        <p>All should output the version number (<code>vstodo version 1.0.0</code>) and status without error.</p>
+      </section>
+    </main>
+
+    <footer>
+      <p>&copy; 2026 SneppX. <a href="index.html">Back to main site</a>. Documentation hand-written — no AI slop.</p>
+    </footer>
+  </body>
+</html>
