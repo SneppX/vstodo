@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"vstodo/internal/app"
-	"vstodo/internal/sha1"
 )
 
 // cmdCatFile provides the content or type of repository objects.
@@ -13,7 +12,7 @@ func cmdCatFile(a *app.App, args []string) error {
 		return fmt.Errorf("usage: vstodo cat-file (-t|-p) <object>")
 	}
 	opt := args[0]
-	id, err := sha1.FromHex(args[1])
+	id, err := resolveCommitish(a, args[1])
 	if err != nil {
 		return err
 	}
