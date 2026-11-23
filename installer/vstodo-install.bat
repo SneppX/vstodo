@@ -9,8 +9,8 @@ set "SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\VSTodo\VSTodo.lnk"
 rem Create install directory
 mkdir "%DEST_DIR%"
 
-rem Copy binary from current directory
-copy "%~dp0%VSTODO_BIN%" "%DEST_DIR%\%VSTODO_BIN%"
+rem Copy binary from repo root (one level up)
+copy "%~dp0..\%VSTODO_BIN%" "%DEST_DIR%\%VSTODO_BIN%"
 if errorlevel 1 (
     echo Error: Could not copy binary.
     pause
