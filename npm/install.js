@@ -26,7 +26,7 @@ function platformAsset() {
 
 function download(url, dest) {
   return new Promise((resolve, reject) => {
-    const file = fs.createFileStream(dest);
+    const file = fs.createWriteStream(dest);
     https
       .get(url, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
