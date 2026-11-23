@@ -34,9 +34,9 @@ func cmdReset(a *app.App, args []string) error {
 		}
 	}
 
-	targetID, err := resolveResetTarget(a, target)
+	targetID, err := resolveCommitish(a, target)
 	if err != nil {
-		return err
+		return fmt.Errorf("reset: %w", err)
 	}
 	targetObj, err := a.Store.Load(targetID)
 	if err != nil {
@@ -75,27 +75,6 @@ func cmdReset(a *app.App, args []string) error {
 	}
 	fmt.Printf("Reset %s to %s\n", mode, targetID.Hex()[:7])
 	return nil
-}
-
-func resolveResetTarget(a *app.App, target string) (sha1.Digest, error) {
-	if target == "HEAD" {
-		id, err := currentCommitID(a)
-		if err != nil {
-			return sha1.Zero, fmt.Errorf("reset: resolve HEAD: %w", err)
-		}
-		return id, nil
-	}
-	if id, err := a.Refs.ReadRef("refs/heads/" + target); err == nil {
-		return id, nil
-	}
-	if id, err := a.Refs.ReadRef("refs/tags/" + target); err == nil {
-		return id, nil
-	}
-	id, err := sha1.FromHex(target)
-	if err != nil {
-		return sha1.Zero, fmt.Errorf("reset: unknown target %q", target)
-	}
-	return id, nil
 }
 
 func updateCurrentHead(a *app.App, id sha1.Digest) error {
