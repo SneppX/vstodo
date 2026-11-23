@@ -25,7 +25,7 @@ func cmdNotes(a *app.App, args []string) error {
 	case "remove":
 		return notesRemove(a, args[1:])
 	default:
-		return fmt.Errorf("vstodo: unknown notes subcommand '%s'", args[0])
+		return fmt.Errorf("unknown notes subcommand '%s'", args[0])
 	}
 }
 

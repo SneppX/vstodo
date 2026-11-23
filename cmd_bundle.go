@@ -26,7 +26,7 @@ func cmdBundle(a *app.App, args []string) error {
 	case "list-heads":
 		return bundleListHeads(a, args[1:])
 	default:
-		return fmt.Errorf("vstodo: unknown bundle subcommand '%s'", args[0])
+		return fmt.Errorf("unknown bundle subcommand '%s'", args[0])
 	}
 }
 

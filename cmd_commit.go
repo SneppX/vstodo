@@ -21,7 +21,7 @@ func cmdCommit(a *app.App, args []string) error {
 		}
 	}
 	if msg == "" {
-		return fmt.Errorf("vstodo: commit requires -m <message>")
+		return fmt.Errorf("commit requires -m <message>")
 	}
 
 	treeID, err := buildTreeFromIndex(a, a.Index.Entries(), "")

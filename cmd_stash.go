@@ -38,7 +38,7 @@ func cmdStash(a *app.App, args []string) error {
 	case "clear":
 		return stashClear(a)
 	default:
-		return fmt.Errorf("vstodo: unknown stash subcommand '%s'", args[0])
+		return fmt.Errorf("unknown stash subcommand '%s'", args[0])
 	}
 }
 

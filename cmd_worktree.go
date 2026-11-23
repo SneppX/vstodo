@@ -27,7 +27,7 @@ func cmdWorktree(a *app.App, args []string) error {
 	case "unlock":
 		return worktreeUnlock(a, args[1:])
 	default:
-		return fmt.Errorf("vstodo: unknown worktree subcommand '%s'", args[0])
+		return fmt.Errorf("unknown worktree subcommand '%s'", args[0])
 	}
 }
 
