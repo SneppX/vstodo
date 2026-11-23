@@ -9,6 +9,9 @@
 *.app
 vstodo
 
+# npm wrapper vendored binaries
+npm/vendor/
+
 # Go build artifacts
 /bin/
 /build/
