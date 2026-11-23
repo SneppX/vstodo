@@ -31,7 +31,7 @@ jobs:
           VERSION="${{ inputs.tag }}"
           VERSION="${VERSION#v}"
           cd npm
-          npm version "$VERSION" --no-git-tag-version
+          npm version "$VERSION" --no-git-tag-version || echo "VERSION already set to $VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Install dependencies
