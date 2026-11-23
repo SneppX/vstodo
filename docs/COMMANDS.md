@@ -82,12 +82,13 @@ the target tree.
 ### diff
 
 ```
-vstodo diff [commit]
+vstodo diff
+vstodo diff <commit1> <commit2>
 ```
 
-Show changes between the index/working tree and an optional commit, or between
-two commits if supported. Output lists changed paths and their before/after blob
-digests.
+With no arguments, show unified diffs between HEAD and the staged index. With
+two commits, show unified diffs between the two commit trees. Output includes
+file headers, hunk headers, and added/removed lines.
 
 ### show
 
