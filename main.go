@@ -8,6 +8,8 @@ import (
 	"vstodo/internal/app"
 )
 
+const Version = "0.1.0"
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -16,6 +18,11 @@ func main() {
 
 	cmd := os.Args[1]
 	args := os.Args[2:]
+
+	if cmd == "-v" || cmd == "--version" || cmd == "-version" || cmd == "version" {
+		fmt.Printf("vstodo version %s\n", Version)
+		return
+	}
 
 	if cmd == "demo" {
 		if err := cmdDemo(args); err != nil {
