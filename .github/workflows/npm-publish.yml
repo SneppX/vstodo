@@ -40,6 +40,8 @@ jobs:
 
       - name: Publish to npm
         working-directory: npm
-        run: npm publish --access public
+        run: |
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
