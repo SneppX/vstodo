@@ -101,3 +101,29 @@ func TestCmdDiffIndexVsHead(t *testing.T) {
 		t.Fatalf("expected unified diff, got:\n%s", out)
 	}
 }
+
+func TestCmdDiffNewAndDeletedFiles(t *testing.T) {
+	a, _, oursID, theirsID := makeMergeFixture(t,
+		map[string]string{"shared.txt": "same\n"},
+		map[string]string{"shared.txt": "same\n", "added.txt": "hello\n"},
+		map[string]string{"shared.txt": "same\n"},
+	)
+	out, err := captureStdout(t, func() error {
+		return cmdDiff(a, []string{theirsID.Hex(), oursID.Hex()})
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff: %v", err)
+	}
+	if !strings.Contains(out, "new file") || !strings.Contains(out, "+hello") {
+		t.Fatalf("expected new file diff, got:\n%s", out)
+	}
+	out, err = captureStdout(t, func() error {
+		return cmdDiff(a, []string{oursID.Hex(), theirsID.Hex()})
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff reverse: %v", err)
+	}
+	if !strings.Contains(out, "deleted file") || !strings.Contains(out, "-hello") {
+		t.Fatalf("expected deleted file diff, got:\n%s", out)
+	}
+}
