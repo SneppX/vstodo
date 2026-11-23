@@ -60,7 +60,7 @@ full SHA-1, author, date, and message.
 ### branch
 
 ```
-vsteto branch [name]
+vstodo branch [name]
 vstodo branch -d <name>
 ```
 
