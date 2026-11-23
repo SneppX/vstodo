@@ -9,6 +9,9 @@
 *.app
 vstodo
 
+# npm pack artifacts
+npm/*.tgz
+
 # npm wrapper vendored binaries
 npm/vendor/
 
