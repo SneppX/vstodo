@@ -61,10 +61,13 @@
       </section>
 
       <section id="source">
-        <h2>Install from source</h2>
-        <p>If you have Go installed, you can install the VSTodo CLI directly:</p>
-        <pre><code>go install github.com/SneppX/vstodo@latest</code></pre>
-        <p>This installs the CLI only. Native packages and portable archives also include <code>vstodo-installer</code>.</p>
+        <h2>Build from source</h2>
+        <p>If you have Go installed, you can build both VSTodo executables from source:</p>
+        <pre><code>git clone https://github.com/SneppX/vstodo.git
+cd vstodo
+go build -o vstodo .
+go build -o vstodo-installer ./cmd/vstodo-installer</code></pre>
+        <p>This builds the CLI and installer locally. Native packages and portable archives are the recommended installation method.</p>
       </section>
     </main>
     <footer>
