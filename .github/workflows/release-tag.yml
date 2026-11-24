@@ -69,6 +69,10 @@ jobs:
           RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
-          TAG="${RELEASE_BRANCH#release/}"
+          if [[ ! "$RELEASE_BRANCH" =~ ^release/(v[0-9]+\.[0-9]+\.[0-9]+)(-retry-[0-9]+)?$ ]]; then
+            echo "Ignoring non-versioned release branch: $RELEASE_BRANCH"
+            exit 0
+          fi
+          TAG="${BASH_REMATCH[1]}"
           gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main --field tag="$TAG"
           echo "Dispatched native release workflow for $TAG."
