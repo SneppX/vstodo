@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: release-tag-${{ github.event.workflow_run.head_branch }}
@@ -48,16 +49,26 @@ jobs:
 
           if git show-ref --verify --quiet "refs/tags/$TAG"; then
             EXISTING_SHA="$(git rev-list -n 1 "$TAG")"
-            if [[ "$EXISTING_SHA" == "$RELEASE_SHA" ]]; then
-              echo "$TAG already points to the CI-verified commit."
-              exit 0
+            if [[ "$EXISTING_SHA" != "$RELEASE_SHA" ]]; then
+              echo "Refusing to overwrite existing tag $TAG."
+              exit 1
             fi
-            echo "Refusing to overwrite existing tag $TAG."
-            exit 1
+            echo "$TAG already points to the CI-verified commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" "$RELEASE_SHA" -m "VSTodo $TAG"
+            git push origin "refs/tags/$TAG"
+            echo "Created $TAG from CI-verified commit $RELEASE_SHA."
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" "$RELEASE_SHA" -m "VSTodo $TAG"
-          git push origin "refs/tags/$TAG"
-          echo "Created $TAG from CI-verified commit $RELEASE_SHA."
+      - name: Dispatch native release workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_BRANCH#release/}"
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main --field tag="$TAG"
+          echo "Dispatched native release workflow for $TAG."
