@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "$RELEASE_BRANCH" =~ ^release/(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+          if [[ ! "$RELEASE_BRANCH" =~ ^release/(v[0-9]+\.[0-9]+\.[0-9]+)(-retry-[0-9]+)?$ ]]; then
             echo "Ignoring non-versioned release branch: $RELEASE_BRANCH"
             exit 0
           fi
