@@ -92,6 +92,57 @@ func ResolvePaths(root string) (Paths, error) {
 	}, nil
 }
 
+
+func ensureInstallDirectories(paths Paths) error {
+	if err := os.MkdirAll(paths.Root, 0755); err != nil {
+		return err
+	}
+	if err := requireDirectory(paths.Root); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(paths.BinDir, 0755); err != nil {
+		return err
+	}
+	return requireDirectory(paths.BinDir)
+}
+
+func validateInstallLayout(paths Paths, requireManifest bool) error {
+	if err := requireDirectory(paths.Root); err != nil {
+		return fmt.Errorf("unsafe installation root: %w", err)
+	}
+	if err := requireDirectory(paths.BinDir); err != nil {
+		return fmt.Errorf("unsafe installation bin directory: %w", err)
+	}
+	if requireManifest {
+		if err := requireRegularFile(paths.Manifest); err != nil {
+			return fmt.Errorf("unsafe installer manifest: %w", err)
+		}
+	}
+	return nil
+}
+
+func requireDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("%q is not a real directory", path)
+	}
+	return nil
+}
+
+func requireRegularFile(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%q is not a regular file", path)
+	}
+	return nil
+}
+
 func Install(opts Options) (Manifest, error) {
 	if strings.TrimSpace(opts.Source) == "" {
 		return Manifest{}, errors.New("a VSTodo binary source is required")
@@ -107,8 +158,8 @@ func Install(opts Options) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("resolve installer executable: %w", err)
 		}
 	}
-	if err := os.MkdirAll(paths.BinDir, 0755); err != nil {
-		return Manifest{}, fmt.Errorf("create install directory: %w", err)
+	if err := ensureInstallDirectories(paths); err != nil {
+		return Manifest{}, fmt.Errorf("prepare install directory: %w", err)
 	}
 
 	binaryHash, err := copyAtomic(opts.Source, paths.Binary)
@@ -147,6 +198,9 @@ func Verify(root string) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
+	if err := validateInstallLayout(paths, true); err != nil {
+		return Manifest{}, err
+	}
 	manifest, err := readManifest(paths.Manifest)
 	if err != nil {
 		return Manifest{}, err
@@ -168,6 +222,9 @@ func Verify(root string) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("installer manifest contains an unsafe or duplicate path for %q", entry.Name)
 		}
 		seen[entry.Name] = true
+		if err := requireRegularFile(entry.Path); err != nil {
+			return Manifest{}, fmt.Errorf("verify %s: %w", entry.Name, err)
+		}
 		actual, err := fileSHA256(entry.Path)
 		if err != nil {
 			return Manifest{}, fmt.Errorf("verify %s: %w", entry.Name, err)
@@ -185,6 +242,9 @@ func Verify(root string) (Manifest, error) {
 func Uninstall(root string) (Paths, error) {
 	paths, err := ResolvePaths(root)
 	if err != nil {
+		return Paths{}, err
+	}
+	if err := validateInstallLayout(paths, true); err != nil {
 		return Paths{}, err
 	}
 	manifest, err := readManifest(paths.Manifest)
@@ -209,7 +269,10 @@ func Uninstall(root string) (Paths, error) {
 	if len(seen) != len(expected) {
 		return Paths{}, errors.New("refusing to uninstall an incomplete VSTodo manifest")
 	}
-	currentExecutable, _ := os.Executable()
+	currentExecutable, executableErr := os.Executable()
+	if executableErr != nil {
+		return Paths{}, fmt.Errorf("resolve running installer executable: %w", executableErr)
+	}
 	deferredSelfRemoval := false
 	for _, entry := range manifest.Files {
 		if runtime.GOOS == "windows" && samePath(entry.Path, currentExecutable) {
@@ -370,10 +433,29 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if runtime.GOOS == "windows" {
-		_ = os.Remove(path)
+	// Windows cannot rename over an existing file. Move the old manifest
+	// aside first and restore it if activation of the new manifest fails.
+	backup := path + ".vstodo-backup"
+	_ = os.Remove(backup)
+	hadExisting := false
+	if _, err := os.Lstat(path); err == nil {
+		if err := os.Rename(path, backup); err != nil {
+			return fmt.Errorf("preserve previous manifest: %w", err)
+		}
+		hadExisting = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		if hadExisting {
+			_ = os.Rename(backup, path)
+		}
+		return fmt.Errorf("activate new manifest: %w", err)
+	}
+	if hadExisting {
+		_ = os.Remove(backup)
+	}
+	return nil
 }
 
 func fileSHA256(path string) (string, error) {
