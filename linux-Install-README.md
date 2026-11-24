@@ -7,7 +7,7 @@ Download native packages or standalone archives from the [latest VSTodo release]
 Download the matching `.deb` package, then run:
 
 ```sh
-sudo apt install ./vstodo_*_linux_amd64.deb
+sudo apt install ./vstodo_*_linux_*.deb
 vstodo --version
 ```
 
@@ -16,14 +16,14 @@ Use the `arm64` package on supported ARM64 systems.
 ## Fedora, RHEL and compatible distributions
 
 ```sh
-sudo dnf install ./vstodo_*_linux_amd64.rpm
+sudo dnf install ./vstodo_*_linux_*.rpm
 vstodo --version
 ```
 
 ## Alpine Linux
 
 ```sh
-sudo apk add --allow-untrusted ./vstodo_*_linux_amd64.apk
+sudo apk add --allow-untrusted ./vstodo_*_linux_*.apk
 vstodo --version
 ```
 
@@ -32,7 +32,7 @@ vstodo --version
 Install the generated Arch package with:
 
 ```sh
-sudo pacman -U ./vstodo_*_linux_amd64.pkg.tar.zst
+sudo pacman -U ./vstodo_*_linux_*.pkg.tar.zst
 vstodo --version
 ```
 
@@ -41,8 +41,9 @@ vstodo --version
 Download the matching Linux `.tar.gz` archive, extract it, and place the binary on your PATH:
 
 ```sh
-tar -xzf vstodo_*_linux_amd64.tar.gz
+tar -xzf vstodo_*_linux_*.tar.gz
 sudo install -m 0755 vstodo /usr/local/bin/vstodo
+sudo install -m 0755 vstodo-installer /usr/local/bin/vstodo-installer
 vstodo --version
 ```
 

@@ -24,8 +24,14 @@ Open the matching `.dmg`, then open the included PKG installer.
 A standalone `.tar.gz` archive is also available:
 
 ```sh
+# Apple Silicon
 tar -xzf vstodo_*_darwin_arm64.tar.gz
+
+# Intel
+tar -xzf vstodo_*_darwin_amd64.tar.gz
+
 sudo install -m 0755 vstodo /usr/local/bin/vstodo
+sudo install -m 0755 vstodo-installer /usr/local/bin/vstodo-installer
 vstodo --version
 ```
 

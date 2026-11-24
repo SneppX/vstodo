@@ -209,7 +209,13 @@ func Uninstall(root string) (Paths, error) {
 	if len(seen) != len(expected) {
 		return Paths{}, errors.New("refusing to uninstall an incomplete VSTodo manifest")
 	}
+	currentExecutable, _ := os.Executable()
+	deferredSelfRemoval := false
 	for _, entry := range manifest.Files {
+		if runtime.GOOS == "windows" && samePath(entry.Path, currentExecutable) {
+			deferredSelfRemoval = true
+			continue
+		}
 		if err := os.Remove(entry.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return Paths{}, fmt.Errorf("remove %s: %w", entry.Name, err)
 		}
@@ -217,8 +223,15 @@ func Uninstall(root string) (Paths, error) {
 	if err := os.Remove(paths.Manifest); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Paths{}, fmt.Errorf("remove installer manifest: %w", err)
 	}
-	_ = os.Remove(paths.BinDir)
-	_ = os.Remove(paths.Root)
+	if deferredSelfRemoval {
+		command := fmt.Sprintf("timeout /t 2 /nobreak >nul & del /f /q \"%s\" & rmdir \"%s\" & rmdir \"%s\"", paths.Installer, paths.BinDir, paths.Root)
+		if err := exec.Command("cmd.exe", "/C", command).Start(); err != nil {
+			return Paths{}, fmt.Errorf("schedule removal of running installer: %w", err)
+		}
+	} else {
+		_ = os.Remove(paths.BinDir)
+		_ = os.Remove(paths.Root)
+	}
 	return paths, nil
 }
 
@@ -245,6 +258,14 @@ func RemoveFromUserPath(dir string) error {
 }
 
 func copyAtomic(source, destination string) (string, error) {
+	if samePath(source, destination) {
+		return fileSHA256(source)
+	}
+	if runtime.GOOS == "windows" {
+		if currentExecutable, err := os.Executable(); err == nil && samePath(currentExecutable, destination) {
+			return fileSHA256(destination)
+		}
+	}
 	src, err := os.Open(source)
 	if err != nil {
 		return "", err
@@ -369,6 +390,12 @@ func fileSHA256(path string) (string, error) {
 }
 
 func samePath(a, b string) bool {
+	if abs, err := filepath.Abs(a); err == nil {
+		a = abs
+	}
+	if abs, err := filepath.Abs(b); err == nil {
+		b = abs
+	}
 	a = filepath.Clean(a)
 	b = filepath.Clean(b)
 	if runtime.GOOS == "windows" {

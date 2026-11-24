@@ -108,3 +108,21 @@ func TestUninstallRejectsManifestPathTraversal(t *testing.T) {
 		t.Fatalf("outside file was changed or removed: data=%q err=%v", data, err)
 	}
 }
+
+func TestCopyAtomicSamePathIsSafe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vstodo")
+	if err := os.WriteFile(path, []byte("already installed"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := fileSHA256(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := copyAtomic(path, path)
+	if err != nil {
+		t.Fatalf("copyAtomic() with identical paths error = %v", err)
+	}
+	if before != after {
+		t.Fatalf("copyAtomic() changed same-path file hash: before=%s after=%s", before, after)
+	}
+}

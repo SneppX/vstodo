@@ -10,11 +10,11 @@ Download a verified installer or portable archive from the [latest release](http
 
 | Platform | Available release formats |
 | --- | --- |
-| Windows x64 | EXE installer, MSI installer, ZIP archive |
+| Windows x64 / ARM64 | EXE and MSI installers (x64); ZIP archives (x64 and ARM64) |
 | Linux x64 / ARM64 | DEB, RPM, APK, Arch package, TAR.GZ |
 | macOS Intel / Apple Silicon | PKG installer, DMG, TAR.GZ |
 
-See [Linux installation](linux-Install-README.md) and [macOS installation](macOS-Install-README.md) for platform-specific instructions.
+See [Windows installation](windows-Install-README.md), [Linux installation](linux-Install-README.md) and [macOS installation](macOS-Install-README.md) for platform-specific instructions.
 
 Verify downloaded assets using the SHA-256 entries in `checksums.txt`. Packages are not yet code-signed or notarized.
 
@@ -40,7 +40,8 @@ Requires the Go version declared in `go.mod`.
 
 ```sh
 go test ./...
-go build -o vstodo .\ngo build -o vstodo-installer ./cmd/vstodo-installer
+go build -o vstodo .
+go build -o vstodo-installer ./cmd/vstodo-installer
 ```
 
 ## Use the VSTodo installer
