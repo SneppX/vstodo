@@ -1,4 +1,4 @@
-// Package installer implements VSTodo's user-scoped, transactional installer.
+// Package installer implements VSTodo's user-scoped installer.
 package installer
 
 import (
@@ -17,16 +17,16 @@ import (
 )
 
 const (
-	ManifestName = "installer.json"
+	ManifestName  = "installer.json"
 	SchemaVersion = 1
 )
 
 type Paths struct {
-	Root     string
-	BinDir   string
-	Binary   string
+	Root      string
+	BinDir    string
+	Binary    string
 	Installer string
-	Manifest string
+	Manifest  string
 }
 
 type Options struct {
@@ -54,17 +54,20 @@ type Manifest struct {
 
 func ResolvePaths(root string) (Paths, error) {
 	if root == "" {
-		var err error
 		if runtime.GOOS == "windows" {
-			base, e := os.UserConfigDir()
-			if e != nil {
-				return Paths{}, fmt.Errorf("resolve user configuration directory: %w", e)
+			base := os.Getenv("LOCALAPPDATA")
+			if base == "" {
+				var err error
+				base, err = os.UserConfigDir()
+				if err != nil {
+					return Paths{}, fmt.Errorf("resolve user configuration directory: %w", err)
+				}
 			}
 			root = filepath.Join(base, "Programs", "VSTodo")
 		} else {
-			home, e := os.UserHomeDir()
-			if e != nil {
-				return Paths{}, fmt.Errorf("resolve home directory: %w", e)
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return Paths{}, fmt.Errorf("resolve home directory: %w", err)
 			}
 			root = filepath.Join(home, ".local", "share", "vstodo")
 		}
@@ -81,11 +84,11 @@ func ResolvePaths(root string) (Paths, error) {
 		installerName += ".exe"
 	}
 	return Paths{
-		Root: root,
-		BinDir: binDir,
-		Binary: filepath.Join(binDir, binaryName),
+		Root:      root,
+		BinDir:    binDir,
+		Binary:    filepath.Join(binDir, binaryName),
 		Installer: filepath.Join(binDir, installerName),
-		Manifest: filepath.Join(root, ManifestName),
+		Manifest:  filepath.Join(root, ManifestName),
 	}, nil
 }
 
@@ -123,11 +126,11 @@ func Install(opts Options) (Manifest, error) {
 	}
 	manifest := Manifest{
 		SchemaVersion: SchemaVersion,
-		Product: "VSTodo",
-		Version: version,
-		OS: runtime.GOOS,
-		Architecture: runtime.GOARCH,
-		InstalledAt: time.Now().UTC(),
+		Product:       "VSTodo",
+		Version:       version,
+		OS:            runtime.GOOS,
+		Architecture:  runtime.GOARCH,
+		InstalledAt:   time.Now().UTC(),
 		Files: []FileEntry{
 			{Name: filepath.Base(paths.Binary), Path: paths.Binary, SHA256: binaryHash},
 			{Name: filepath.Base(paths.Installer), Path: paths.Installer, SHA256: installerHash},
@@ -152,17 +155,19 @@ func Verify(root string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("unsupported VSTodo installer manifest schema or product")
 	}
 	expected := map[string]string{
-		filepath.Base(paths.Binary): paths.Binary,
+		filepath.Base(paths.Binary):    paths.Binary,
 		filepath.Base(paths.Installer): paths.Installer,
 	}
 	if len(manifest.Files) != len(expected) {
 		return Manifest{}, fmt.Errorf("installer manifest contains an unexpected file count")
 	}
+	seen := make(map[string]bool, len(expected))
 	for _, entry := range manifest.Files {
 		expectedPath, ok := expected[entry.Name]
-		if !ok || !samePath(entry.Path, expectedPath) {
-			return Manifest{}, fmt.Errorf("installer manifest contains an unsafe path for %q", entry.Name)
+		if !ok || seen[entry.Name] || !samePath(entry.Path, expectedPath) {
+			return Manifest{}, fmt.Errorf("installer manifest contains an unsafe or duplicate path for %q", entry.Name)
 		}
+		seen[entry.Name] = true
 		actual, err := fileSHA256(entry.Path)
 		if err != nil {
 			return Manifest{}, fmt.Errorf("verify %s: %w", entry.Name, err)
@@ -170,6 +175,9 @@ func Verify(root string) (Manifest, error) {
 		if !strings.EqualFold(actual, entry.SHA256) {
 			return Manifest{}, fmt.Errorf("checksum mismatch for %s", entry.Name)
 		}
+	}
+	if len(seen) != len(expected) {
+		return Manifest{}, errors.New("installer manifest is missing an installed file")
 	}
 	return manifest, nil
 }
@@ -184,15 +192,25 @@ func Uninstall(root string) (Paths, error) {
 		return Paths{}, err
 	}
 	expected := map[string]string{
-		filepath.Base(paths.Binary): paths.Binary,
+		filepath.Base(paths.Binary):    paths.Binary,
 		filepath.Base(paths.Installer): paths.Installer,
 	}
+	if manifest.SchemaVersion != SchemaVersion || manifest.Product != "VSTodo" || len(manifest.Files) != len(expected) {
+		return Paths{}, errors.New("refusing to uninstall an invalid VSTodo manifest")
+	}
+	seen := make(map[string]bool, len(expected))
 	for _, entry := range manifest.Files {
 		expectedPath, ok := expected[entry.Name]
-		if !ok || !samePath(entry.Path, expectedPath) {
-			return Paths{}, fmt.Errorf("refusing to remove unexpected path for %q", entry.Name)
+		if !ok || seen[entry.Name] || !samePath(entry.Path, expectedPath) {
+			return Paths{}, fmt.Errorf("refusing to remove unexpected or duplicate path for %q", entry.Name)
 		}
-		if err := os.Remove(expectedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		seen[entry.Name] = true
+	}
+	if len(seen) != len(expected) {
+		return Paths{}, errors.New("refusing to uninstall an incomplete VSTodo manifest")
+	}
+	for _, entry := range manifest.Files {
+		if err := os.Remove(entry.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return Paths{}, fmt.Errorf("remove %s: %w", entry.Name, err)
 		}
 	}
@@ -307,6 +325,9 @@ func readManifest(path string) (Manifest, error) {
 }
 
 func writeAtomic(path string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".vstodo-manifest-*")
 	if err != nil {
 		return err
@@ -361,9 +382,12 @@ func updateShellPath(dir string, add bool) error {
 	if err != nil {
 		return err
 	}
+	shell := strings.ToLower(filepath.Base(os.Getenv("SHELL")))
 	profile := filepath.Join(home, ".profile")
-	if strings.HasSuffix(strings.ToLower(os.Getenv("SHELL")), "zsh") {
+	if shell == "zsh" {
 		profile = filepath.Join(home, ".zshrc")
+	} else if shell == "fish" {
+		profile = filepath.Join(home, ".config", "fish", "conf.d", "vstodo.fish")
 	}
 	data, err := os.ReadFile(profile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -383,13 +407,21 @@ func updateShellPath(dir string, add bool) error {
 	if add {
 		quoted := strings.ReplaceAll(dir, "\\", "\\\\")
 		quoted = strings.ReplaceAll(quoted, "\"", "\\\"")
-		block := begin + "\nexport PATH=\"" + quoted + ":$PATH\"\n" + end + "\n"
+		pathLine := "export PATH=\"" + quoted + ":$PATH\""
+		if shell == "fish" {
+			pathLine = "set -gx PATH \"" + quoted + "\" $PATH"
+		}
+		block := begin + "\n" + pathLine + "\n" + end + "\n"
 		if content != "" {
 			content += "\n"
 		}
 		content += block
 	}
-	return writeAtomic(profile, []byte(content), 0644)
+	mode := os.FileMode(0644)
+	if info, err := os.Stat(profile); err == nil {
+		mode = info.Mode().Perm()
+	}
+	return writeAtomic(profile, []byte(content), mode)
 }
 
 func updateWindowsPath(dir string, add bool) error {

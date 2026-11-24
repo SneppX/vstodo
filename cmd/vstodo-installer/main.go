@@ -39,10 +39,10 @@ func run(args []string) error {
 			return fmt.Errorf("--source is required")
 		}
 		manifest, err := installer.Install(installer.Options{
-			Root: *root,
-			Source: *source,
+			Root:            *root,
+			Source:          *source,
 			InstallerSource: *installerSource,
-			Version: Version,
+			Version:         Version,
 		})
 		if err != nil {
 			return err

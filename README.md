@@ -43,6 +43,19 @@ go test ./...
 go build -o vstodo .\ngo build -o vstodo-installer ./cmd/vstodo-installer
 ```
 
+## Use the VSTodo installer
+
+The standalone installer manages a user-scoped installation, verifies installed file hashes, upgrades or repairs binaries, updates the user PATH, and uninstalls only files recorded in its manifest.
+
+```sh
+vstodo-installer install --source /path/to/vstodo
+vstodo-installer verify
+vstodo-installer upgrade --source /path/to/new/vstodo
+vstodo-installer uninstall
+```
+
+The installer is included in native packages and portable release archives.
+
 ## Project status
 
 VSTodo is under active development. Its CLI implements a broad set of local version-control operations and an initial HTTP remote transport. Git protocol coverage, security hardening, interoperability testing and installer signing remain active work.
