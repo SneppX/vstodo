@@ -1,0 +1,63 @@
+name: Create release tag after CI
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["release/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tag-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  create-tag:
+    name: Tag a CI-verified release branch
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the exact CI-tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Validate release branch and create immutable tag
+        shell: bash
+        env:
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_BRANCH" =~ ^release/(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Ignoring non-versioned release branch: $RELEASE_BRANCH"
+            exit 0
+          fi
+          TAG="${BASH_REMATCH[1]}"
+
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" origin/main; then
+            echo "Refusing to tag a commit that is not contained in main."
+            exit 1
+          fi
+
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            EXISTING_SHA="$(git rev-list -n 1 "$TAG")"
+            if [[ "$EXISTING_SHA" == "$RELEASE_SHA" ]]; then
+              echo "$TAG already points to the CI-verified commit."
+              exit 0
+            fi
+            echo "Refusing to overwrite existing tag $TAG."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" "$RELEASE_SHA" -m "VSTodo $TAG"
+          git push origin "refs/tags/$TAG"
+          echo "Created $TAG from CI-verified commit $RELEASE_SHA."
