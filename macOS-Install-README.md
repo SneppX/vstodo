@@ -7,7 +7,7 @@ Download the installer for your CPU architecture from the [latest VSTodo release
 
 ## PKG installer
 
-Open the matching `.pkg` and follow the Installer prompts. The package installs the `vstodo` executable into `/usr/local/bin`.
+Open the matching `.pkg` and follow the Installer prompts. The package installs `vstodo` and `vstodo-installer` into `/usr/local/bin`.
 
 Verify:
 

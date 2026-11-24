@@ -28,6 +28,7 @@ Verify downloaded assets using the SHA-256 entries in `checksums.txt`. Packages 
 - Git-compatible object formats and SHA-1 object hashing
 - HTTP smart-transport reference discovery, clone, fetch, push and pull
 - GitHub authentication using `VSTODO_GITHUB_TOKEN` or `GITHUB_TOKEN`
+- A native VSTodo installer CLI for user-scoped install, upgrade, repair, verification and uninstall
 
 ## Adopt an existing Git repository
 
@@ -39,7 +40,7 @@ Requires the Go version declared in `go.mod`.
 
 ```sh
 go test ./...
-go build -o vstodo .
+go build -o vstodo .\ngo build -o vstodo-installer ./cmd/vstodo-installer
 ```
 
 ## Project status

@@ -3,6 +3,6 @@
     <InstallerPlatform>x64</InstallerPlatform>
     <OutputType>Package</OutputType>
     <OutputName>vstodo</OutputName>
-    <DefineConstants>Version=$(VSTodoVersion);BinaryPath=$(VSTodoBinaryPath)</DefineConstants>
+    <DefineConstants>Version=$(VSTodoVersion);BinaryPath=$(VSTodoBinaryPath);InstallerBinaryPath=$(VSTodoInstallerBinaryPath)</DefineConstants>
   </PropertyGroup>
 </Project>

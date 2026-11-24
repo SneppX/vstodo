@@ -16,14 +16,14 @@ Use the `arm64` package on supported ARM64 systems.
 ## Fedora, RHEL and compatible distributions
 
 ```sh
-sudo dnf install ./vstodo-*.rpm
+sudo dnf install ./vstodo_*_linux_amd64.rpm
 vstodo --version
 ```
 
 ## Alpine Linux
 
 ```sh
-sudo apk add --allow-untrusted ./vstodo-*.apk
+sudo apk add --allow-untrusted ./vstodo_*_linux_amd64.apk
 vstodo --version
 ```
 
@@ -32,7 +32,7 @@ vstodo --version
 Install the generated Arch package with:
 
 ```sh
-sudo pacman -U ./vstodo-*.pkg.tar.zst
+sudo pacman -U ./vstodo_*_linux_amd64.pkg.tar.zst
 vstodo --version
 ```
 

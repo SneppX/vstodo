@@ -25,6 +25,7 @@
     <ComponentGroup Id="VSTodoComponents" Directory="INSTALLFOLDER">
       <Component Id="VSTodoExecutable" Guid="*">
         <File Id="VSTodoExe" Source="$(var.BinaryPath)" KeyPath="yes" />
+        <File Id="VSTodoInstallerExe" Source="$(var.InstallerBinaryPath)" />
         <Environment
           Id="VSTodoPath"
           Name="PATH"

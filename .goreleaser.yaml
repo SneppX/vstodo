@@ -25,10 +25,29 @@ builds:
     ldflags:
       - -s -w -X main.Version={{.Version}}
 
+  - id: vstodo-installer
+    main: ./cmd/vstodo-installer
+    binary: vstodo-installer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
 archives:
   - id: default
     ids:
       - vstodo
+      - vstodo-installer
     formats:
       - tar.gz
     format_overrides:
@@ -45,6 +64,7 @@ nfpms:
     package_name: vstodo
     ids:
       - vstodo
+      - vstodo-installer
     vendor: SneppX
     homepage: https://github.com/SneppX/vstodo
     maintainer: SneppX

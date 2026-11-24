@@ -32,6 +32,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "..\dist\vstodo.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\vstodo-installer.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\VSTodo"; Filename: "{app}\vstodo.exe"; Parameters: "--help"; WorkingDir: "{app}"

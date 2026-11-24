@@ -58,8 +58,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           go build -o dist/vstodo.exe .
+          go build -o dist/vstodo-installer.exe ./cmd/vstodo-installer
           $binary = (Resolve-Path 'dist/vstodo.exe').Path
-          dotnet build installer/vstodo.wixproj -c Release -p:VSTodoVersion=0.0.0 -p:VSTodoBinaryPath="$binary" -p:OutputPath=..\dist\ -p:OutputName=vstodo-validation
+          $installerBinary = (Resolve-Path 'dist/vstodo-installer.exe').Path
+          dotnet build installer/vstodo.wixproj -c Release -p:VSTodoVersion=0.0.0 -p:VSTodoBinaryPath="$binary" -p:VSTodoInstallerBinaryPath="$installerBinary" -p:OutputPath=..\dist\ -p:OutputName=vstodo-validation
           if ($LASTEXITCODE -ne 0) { throw "WiX MSI build failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path "dist/vstodo-validation.msi")) { throw "MSI output missing" }
           choco install innosetup --no-progress -y
@@ -75,7 +77,9 @@ jobs:
           set -euo pipefail
           mkdir -p stage/usr/local/bin dist/dmg/VSTodo
           go build -o dist/vstodo .
+          go build -o dist/vstodo-installer ./cmd/vstodo-installer
           install -m 0755 dist/vstodo stage/usr/local/bin/vstodo
+          install -m 0755 dist/vstodo-installer stage/usr/local/bin/vstodo-installer
           pkgbuild --root stage --identifier io.sneppx.vstodo --version 0.0.0 --install-location / dist/vstodo-validation.pkg
           cp dist/vstodo-validation.pkg dist/dmg/VSTodo/
           hdiutil create -volname "VSTodo validation" -srcfolder dist/dmg/VSTodo -ov -format UDZO dist/vstodo-validation.dmg
