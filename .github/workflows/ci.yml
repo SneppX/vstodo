@@ -55,3 +55,17 @@ jobs:
       - name: Race detector (Linux)
         if: runner.os == 'Linux'
         run: go test -race -count=1 ./...
+
+  release-config:
+    name: Validate release configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check GoReleaser configuration
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check

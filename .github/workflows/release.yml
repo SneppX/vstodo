@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   goreleaser:
+    name: Build binaries and Linux packages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,9 +19,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -30,3 +32,95 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows-installers:
+    name: Build Windows EXE and MSI installers
+    needs: goreleaser
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows binary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "vstodo_${VERSION}_windows_amd64.zip" --dir dist
+
+      - name: Extract binary
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem dist -Filter *.zip | Select-Object -First 1
+          Expand-Archive -Path $archive.FullName -DestinationPath dist -Force
+          if (-not (Test-Path "dist/vstodo.exe")) { throw "vstodo.exe missing from release archive" }
+
+      - name: Build MSI with WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 6.0.2
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          wix build installer/vstodo.wxs -d Version=$version -d BinaryPath="$((Resolve-Path 'dist/vstodo.exe').Path)" -o "dist/vstodo-$version-windows-amd64.msi"
+
+      - name: Build EXE installer with Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "installer/vstodo-setup.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+
+      - name: Upload Windows installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" "dist/vstodo-${VERSION}-windows-amd64.msi" "dist/vstodo-setup-${VERSION}-windows-amd64.exe" --repo "$GITHUB_REPOSITORY" --clobber
+
+  macos-installers:
+    name: Build macOS PKG and DMG installers
+    needs: goreleaser
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download macOS binary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "vstodo_${VERSION}_darwin_${{ matrix.arch }}.tar.gz" --dir dist
+
+      - name: Build PKG and DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="${{ matrix.arch }}"
+          tar -xzf "dist/vstodo_${VERSION}_darwin_${ARCH}.tar.gz" -C dist
+          test -x dist/vstodo
+          mkdir -p "stage/bin" "dist/dmg/VSTodo"
+          install -m 0755 dist/vstodo stage/bin/vstodo
+          pkgbuild --root stage --identifier "io.sneppx.vstodo" --version "$VERSION" --install-location /usr/local "dist/vstodo-${VERSION}-macos-${ARCH}.pkg"
+          cp "dist/vstodo-${VERSION}-macos-${ARCH}.pkg" "dist/dmg/VSTodo/"
+          cp LICENSE README.md "dist/dmg/VSTodo/"
+          hdiutil create -volname "VSTodo ${VERSION}" -srcfolder "dist/dmg/VSTodo" -ov -format UDZO "dist/vstodo-${VERSION}-macos-${ARCH}.dmg"
+
+      - name: Upload macOS installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" "dist/vstodo-${VERSION}-macos-${{ matrix.arch }}.pkg" "dist/vstodo-${VERSION}-macos-${{ matrix.arch }}.dmg" --repo "$GITHUB_REPOSITORY" --clobber

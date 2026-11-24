@@ -8,7 +8,7 @@ import (
 	"vstodo/internal/app"
 )
 
-const Version = "1.0.0"
+var Version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="VSTodo"
+    Manufacturer="SneppX"
+    Version="$(var.Version)"
+    UpgradeCode="8E16A7E4-8B7D-4A2C-8E66-0F95EAC6E5A1"
+    Scope="perMachine"
+    InstallerVersion="500">
+    <SummaryInformation Description="VSTodo command-line version control system" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of VSTodo is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Feature Id="Main" Title="VSTodo" Level="1">
+      <ComponentGroupRef Id="VSTodoComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="VSTodo" />
+    </StandardDirectory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="VSTodoComponents" Directory="INSTALLFOLDER">
+      <Component Id="VSTodoExecutable" Guid="*">
+        <File Id="VSTodoExe" Source="$(var.BinaryPath)" KeyPath="yes" />
+        <Environment
+          Id="VSTodoPath"
+          Name="PATH"
+          Value="[INSTALLFOLDER]"
+          Part="last"
+          Action="set"
+          System="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

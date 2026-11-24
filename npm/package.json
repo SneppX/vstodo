@@ -1,7 +1,7 @@
 {
   "name": "vstodo",
-  "version": "0.1.1",
-  "description": "VSTodo - a version control system built in Go (npm binary wrapper)",
+  "version": "0.2.0",
+  "description": "VSTodo - an independent version control system built in Go",
   "license": "MIT",
   "repository": {
     "type": "git",

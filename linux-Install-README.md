@@ -1,47 +1,57 @@
-# VSTodo Linux Installer
+# Install VSTodo on Linux
 
-## Manual Installation (Recommended)
+Download native packages or standalone archives from the [latest VSTodo release](https://github.com/SneppX/vstodo/releases/latest).
 
-1. Download `vstodo-1.0.0-linux-amd64.tar.gz` from GitHub Releases
-2. Extract the archive:
-   ```bash
-   tar -xzvf vstodo-1.0.0-linux-amd64.tar.gz
-   ```
-3. Copy the binary to `/usr/local/bin`:
-   ```bash
-   sudo cp vstodo /usr/local/bin/vstodo
-   ```
-4. Make it executable:
-   ```bash
-   sudo chmod +x /usr/local/bin/vstodo
-   ```
-5. Verify installation:
-   ```bash
-   vstodo --version
-   # Output: vstodo version 1.0.0
-   ```
+## Debian and Ubuntu
 
-## Alternative: DEB Package
+Download the matching `.deb` package, then run:
 
-If you want a proper .deb package:
-
-1. Install dependencies:
-   ```bash
-   sudo apt-get install checkinstall
-   ```
-2. Create the package:
-   ```bash
-   checkinstall -D -y --pkgname=vstodo --pkgversion=1.0.0 --maintainer="SneppX" --default
-   ```
-3. Or manually create .deb using dpkg-deb
-
-The `checkinstall` method creates a .deb that tracks the installation and can be removed with `apt-get remove vstodo`.
-
-## Alternative: apt Repository
-
-Add the VSTodo repository:
-```bash
-echo "deb [trusted=yes] https://package.sneppx.io/apt/ /" | sudo tee /etc/apt/sources.list.d/vstodo.list
-sudo apt-get update
-sudo apt-get install vstodo
+```sh
+sudo apt install ./vstodo_*_linux_amd64.deb
+vstodo --version
 ```
+
+Use the `arm64` package on supported ARM64 systems.
+
+## Fedora, RHEL and compatible distributions
+
+```sh
+sudo dnf install ./vstodo-*.rpm
+vstodo --version
+```
+
+## Alpine Linux
+
+```sh
+sudo apk add --allow-untrusted ./vstodo-*.apk
+vstodo --version
+```
+
+## Arch Linux
+
+Install the generated Arch package with:
+
+```sh
+sudo pacman -U ./vstodo-*.pkg.tar.zst
+vstodo --version
+```
+
+## Portable installation
+
+Download the matching Linux `.tar.gz` archive, extract it, and place the binary on your PATH:
+
+```sh
+tar -xzf vstodo_*_linux_amd64.tar.gz
+sudo install -m 0755 vstodo /usr/local/bin/vstodo
+vstodo --version
+```
+
+## Package verification
+
+Each release includes `checksums.txt`. Verify downloaded assets before installation:
+
+```sh
+sha256sum --check checksums.txt
+```
+
+Packages are currently unsigned. Verify release checksums and publisher provenance before installing.

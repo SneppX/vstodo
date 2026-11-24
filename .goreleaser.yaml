@@ -19,8 +19,11 @@ builds:
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
-      - -s -w
+      - -s -w -X main.Version={{.Version}}
 
 archives:
   - id: default
@@ -33,9 +36,33 @@ archives:
         formats:
           - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+nfpms:
+  - id: linux-packages
+    package_name: vstodo
+    ids:
+      - vstodo
+    vendor: SneppX
+    homepage: https://github.com/SneppX/vstodo
+    maintainer: SneppX
+    description: An independent version control system with Git-compatible interoperability.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    bindir: /usr/bin
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/vstodo/copyright
+        type: license
 
 checksum:
-  name_template: "checksums.txt"
+  name_template: checksums.txt
 
 changelog:
   sort: asc
