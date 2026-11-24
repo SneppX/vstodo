@@ -92,7 +92,6 @@ func ResolvePaths(root string) (Paths, error) {
 	}, nil
 }
 
-
 func ensureInstallDirectories(paths Paths) error {
 	if err := os.MkdirAll(paths.Root, 0755); err != nil {
 		return err
