@@ -4,7 +4,7 @@ This document describes every `vstodo` command. Commands are dispatched from
 `main.go` to the matching `cmd_*` function. Most commands require a `vstodo`
 repository in the current directory or an ancestor; `init` is the exception.
 
-See `vstodo help` and `vstodo help <command>` for terse usage strings.
+Run `vstodo help` for the command overview. This document provides the detailed reference.
 
 ## Core commands
 
