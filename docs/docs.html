@@ -3,80 +3,66 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="VSTodo installation guide, quick start and command reference." />
     <title>VSTodo — Documentation</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header>
       <div class="logo">VSTodo</div>
-      <nav>
-        <ul>
-          <li><a href="index.html">Back to Site</a></li>
-        </ul>
-      </nav>
+      <nav><ul><li><a href="index.html">Back to site</a></li><li><a href="download.html">Downloads</a></li></ul></nav>
     </header>
-
     <main>
       <section id="quick-start">
-        <h2>Quick Start</h2>
-        <ol>
-          <li><strong>Install</strong>: <code>go install github.com/SneppX/vstodo@latest</code></li>
-          <li><strong>Initialize</strong>: <code>vstodo init</code> (creates <code>.vstodo/</code>)</li>
-          <li><strong>Add files</strong>: <code>vstodo add <em>file</em></code></li>
-          <li><strong>Commit</strong>: <code>vstodo commit -m "message"</code></li>
-          <li><strong>Check status</strong>: <code>vstodo status</code></li>
-          <li><strong>View history</strong>: <code>vstodo log</code></li>
-        </ol>
+        <h1>Quick start</h1>
+        <p>Install VSTodo using a native package or portable archive from the <a href="https://github.com/SneppX/vstodo/releases/latest">latest release</a>, then open a terminal in your project directory.</p>
+        <pre><code>vstodo init
+vstodo add README.md
+vstodo commit -m "Initial commit"
+vstodo status
+vstodo log</code></pre>
+        <p>Check the installed version and built-in help with <code>vstodo --version</code> and <code>vstodo help</code>.</p>
       </section>
 
-      <section id="commands">
-        <h2>CLI Reference</h2>
+      <section id="core-commands">
+        <h2>Core commands</h2>
         <ul>
-          <li><code>vstodo init</code> — Initialize a new VSTodo repository</li>
-          <li><code>vstodo add <file></code> — Stage file contents to the index</li>
-          <li><code>vstodo commit -m <message></code> — Record changes to the repository</li>
-          <li><code>vstodo status</code> — Show working tree status</li>
-          <li><code>vstodo diff</code> — Show unified content diffs</li>
-          <li><code>vstodo log</code> — Show commit history</li>
-          <li><code>vstodo branch</code> — List, create, or delete branches</li>
-          <li><code>vstodo checkout <branch></code> — Switch branches or restore files</li>
-          <li><code>vstodo merge <branch></code> — Merge changes from another branch</li>
-          <li><code>vstodo tag <name></code> — Create, list, or delete tags</li>
-          <li><code>vstodo diff</code> — Show unified diffs between commits/index/working tree</li>
-          <li><code>vstodo status</code> — Show working tree status</li>
-          <li><code>vstodo reset <commit></code> — Reset current HEAD to the specified state</li>
-          <li><code>vstodo log</code> — Show commit history</li>
-          <li><code>vstodo diff</code> — Unified content diff output</li>
+          <li><code>vstodo init [path]</code> — Initialize a repository.</li>
+          <li><code>vstodo add &lt;file&gt; [file...]</code> — Stage file contents.</li>
+          <li><code>vstodo commit -m &lt;message&gt;</code> — Create a commit.</li>
+          <li><code>vstodo status</code> — Show repository and staged state.</li>
+          <li><code>vstodo log [-n count]</code> — View commit history.</li>
+          <li><code>vstodo diff [commit1 commit2]</code> — Compare staged changes or commits.</li>
+          <li><code>vstodo show &lt;object&gt;</code> — Inspect a repository object.</li>
+          <li><code>vstodo branch</code>, <code>checkout</code>, <code>merge</code>, <code>tag</code> — Manage branches and history.</li>
         </ul>
+      </section>
+
+      <section id="advanced">
+        <h2>Advanced commands</h2>
+        <p>VSTodo also includes reset, rebase, rm, fsck, blame, bisect, stash, cherry-pick, notes, gc, worktree, bundle, hash-object and cat-file.</p>
+        <p>Run <code>vstodo help &lt;command&gt;</code> for command-specific usage. See the <a href="https://github.com/SneppX/vstodo/blob/main/docs/COMMANDS.md">complete command reference</a>.</p>
+      </section>
+
+      <section id="remotes">
+        <h2>HTTP remotes and Git interoperability</h2>
+        <p>Configure HTTP/HTTPS remotes with <code>vstodo remote add</code>, inspect refs with <code>vstodo ls-remote</code>, and use <code>fetch</code>, <code>push</code> and <code>pull</code>.</p>
+        <p>Remote push is currently fast-forward only. Force pushes, tag pushes and multi-ref pushes are not supported yet. Supply GitHub credentials through <code>VSTODO_GITHUB_TOKEN</code> or <code>GITHUB_TOKEN</code>; do not embed credentials in remote URLs.</p>
+        <p>For an existing Git repository, use <code>vstodo adopt</code>, then <code>vstodo git-status</code>, <code>vstodo sync-git</code> and <code>vstodo export-git</code> as appropriate. Adoption preserves the original Git object database and refs.</p>
       </section>
 
       <section id="installation">
-        <h2>Installation Guide</h2>
-        <h3>Option 1: go install (Recommended)</h3>
-        <pre><code>go install github.com/SneppX/vstodo@latest</code></pre>
-        <p>This downloads the latest release and installs <code>vstodo</code>/<code>vstodo.exe</code> to your <code>GOBIN</code> directory, which should be in your <code>PATH</code>.</p>
-
-        <h3>Option 2: Manual Binary</h3>
-        <ol>
-          <li>Download the latest release from <a href="https://github.com/SneppX/vstodo/releases">GitHub Releases</a></li>
-          <li>Extract the archive (<code>.zip</code> for Windows, <code>.tar.gz</code> for macOS/Linux)</li>
-          <li>Place the <code>vstodo</code>/<code>vstodo.exe</code> binary in a directory on your <code>PATH</code></li>
-          <li>Verify: <code>vstodo --version</code></li>
-        </ol>
-      </section>
-
-      <section id="verification">
-        <h2>Verification</h2>
-        <p>After installation, run:</p>
-        <pre><code>vstodo --version</code>
-        <code>vstodo -version</code>
-        <code>vstodo status</code></pre>
-        <p>All should output the version number (<code>vstodo version 1.0.0</code>) and status without error.</p>
+        <h2>Build from source</h2>
+        <p>Native packages and portable archives are recommended. If you have Go installed, you can build both executables from source:</p>
+        <pre><code>git clone https://github.com/SneppX/vstodo.git
+cd vstodo
+go build -o vstodo .
+go build -o vstodo-installer ./cmd/vstodo-installer</code></pre>
+        <p>For platform-specific installation steps, see the <a href="https://github.com/SneppX/vstodo/blob/main/windows-Install-README.md">Windows</a>, <a href="https://github.com/SneppX/vstodo/blob/main/macOS-Install-README.md">macOS</a> and <a href="https://github.com/SneppX/vstodo/blob/main/linux-Install-README.md">Linux</a> guides.</p>
       </section>
     </main>
-
     <footer>
-      <p>&copy; 2026 SneppX. <a href="index.html">Back to main site</a>. Documentation hand-written — no AI slop.</p>
+      <p>&copy; 2026 SneppX. <a href="index.html">Back to main site</a> · <a href="https://github.com/SneppX/vstodo">Source code</a></p>
     </footer>
   </body>
 </html>
