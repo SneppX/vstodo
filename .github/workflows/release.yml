@@ -60,10 +60,10 @@ jobs:
       - name: Build MSI with WiX
         shell: pwsh
         run: |
-          dotnet tool install --global wix --version 6.0.2
-          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
           $version = $env:GITHUB_REF_NAME.TrimStart("v")
-          wix build installer/vstodo.wxs -d Version=$version -d BinaryPath="$((Resolve-Path 'dist/vstodo.exe').Path)" -o "dist/vstodo-$version-windows-amd64.msi"
+          $binary = (Resolve-Path 'dist/vstodo.exe').Path
+          dotnet build installer/vstodo.wixproj -c Release -p:VSTodoVersion=$version -p:VSTodoBinaryPath="$binary" -p:OutputPath=..\dist\ -p:OutputName="vstodo-$version-windows-amd64"
+          if ($LASTEXITCODE -ne 0) { throw "WiX MSI build failed with exit code $LASTEXITCODE" }
 
       - name: Build EXE installer with Inno Setup
         shell: pwsh

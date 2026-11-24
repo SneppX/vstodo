@@ -52,12 +52,42 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Validate Windows installers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          go build -o dist/vstodo.exe .
+          $binary = (Resolve-Path 'dist/vstodo.exe').Path
+          dotnet build installer/vstodo.wixproj -c Release -p:VSTodoVersion=0.0.0 -p:VSTodoBinaryPath="$binary" -p:OutputPath=..\dist\ -p:OutputName=vstodo-validation
+          if ($LASTEXITCODE -ne 0) { throw "WiX MSI build failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path "dist/vstodo-validation.msi")) { throw "MSI output missing" }
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=0.0.0" "installer/vstodo-setup.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup validation failed" }
+          if (-not (Test-Path "dist/vstodo-validation.msi")) { throw "MSI output missing" }
+          if (-not (Get-ChildItem dist -Filter "vstodo-setup-0.0.0-windows-amd64.exe")) { throw "EXE installer output missing" }
+
+      - name: Validate macOS installers
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p stage/usr/local/bin dist/dmg/VSTodo
+          go build -o dist/vstodo .
+          install -m 0755 dist/vstodo stage/usr/local/bin/vstodo
+          pkgbuild --root stage --identifier io.sneppx.vstodo --version 0.0.0 --install-location / dist/vstodo-validation.pkg
+          cp dist/vstodo-validation.pkg dist/dmg/VSTodo/
+          hdiutil create -volname "VSTodo validation" -srcfolder dist/dmg/VSTodo -ov -format UDZO dist/vstodo-validation.dmg
+          test -s dist/vstodo-validation.pkg
+          test -s dist/vstodo-validation.dmg
+
       - name: Race detector (Linux)
         if: runner.os == 'Linux'
         run: go test -race -count=1 ./...
 
   release-config:
-    name: Validate release configuration
+    name: Validate release configuration and Linux packages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -69,3 +99,10 @@ jobs:
           distribution: goreleaser
           version: "~> v2"
           args: check
+
+      - name: Build release snapshot and Linux packages
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean

@@ -15,9 +15,9 @@ AppSupportURL=https://github.com/SneppX/vstodo/issues
 DefaultDirName={autopf}\VSTodo
 DefaultGroupName=VSTodo
 UninstallDisplayIcon={app}\vstodo.exe
-OutputDir=dist
+OutputDir=..\dist
 OutputBaseFilename=vstodo-setup-{#AppVersion}-windows-amd64
-ArchitecturesAllowed=x64
+ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
 WizardStyle=modern
@@ -31,10 +31,10 @@ Uninstallable=yes
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "dist\vstodo.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\vstodo.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\VSTodo"; Filename: "{app}\vstodo.exe"; Parameters: "--help"; WorkingDir: "{userdocs}"
+Name: "{group}\VSTodo"; Filename: "{app}\vstodo.exe"; Parameters: "--help"; WorkingDir: "{app}"
 Name: "{autodesktop}\VSTodo"; Filename: "{app}\vstodo.exe"; Parameters: "--help"; Tasks: desktopicon
 
 [Run]
