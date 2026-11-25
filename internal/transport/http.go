@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -46,12 +47,9 @@ func (t *HTTPTransport) FetchPackWithHaves(ctx context.Context, remoteURL, token
 	if len(wants) == 0 {
 		return nil, errors.New("remote: at least one object ID is required")
 	}
-	u, err := url.Parse(remoteURL)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, errors.New("remote: URL must be an absolute HTTP or HTTPS URL")
-	}
-	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errors.New("remote: credentials, query strings, and fragments are not allowed in remote URLs")
+	u, err := validateRemoteURL(remoteURL, token)
+	if err != nil {
+		return nil, err
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/git-upload-pack"
 
@@ -164,12 +162,9 @@ func (t *HTTPTransport) ListPushRefs(ctx context.Context, remoteURL, token strin
 }
 
 func (t *HTTPTransport) listRefs(ctx context.Context, remoteURL, token, service string) ([]RemoteRef, error) {
-	u, err := url.Parse(remoteURL)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, errors.New("remote: URL must be an absolute HTTP or HTTPS URL")
-	}
-	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errors.New("remote: credentials, query strings, and fragments are not allowed in remote URLs")
+	u, err := validateRemoteURL(remoteURL, token)
+	if err != nil {
+		return nil, err
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/info/refs"
 	q := u.Query()
@@ -286,4 +281,26 @@ func parseServiceAdvertisement(body io.Reader, service string) ([]RemoteRef, err
 	sort.Slice(refs, func(i, j int) bool { return refs[i].Name < refs[j].Name })
 	return refs, nil
 
+}
+
+
+// validateRemoteURL rejects ambiguous URLs and prevents credentials from being
+// sent over unencrypted network connections. Plain HTTP remains available for
+// unauthenticated remotes and loopback-only development servers.
+func validateRemoteURL(remoteURL, token string) (*url.URL, error) {
+	u, err := url.Parse(remoteURL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return nil, errors.New("remote: URL must be an absolute HTTP or HTTPS URL")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("remote: credentials, query strings, and fragments are not allowed in remote URLs")
+	}
+	if token != "" && u.Scheme != "https" {
+		host := u.Hostname()
+		ip := net.ParseIP(host)
+		if !strings.EqualFold(host, "localhost") && (ip == nil || !ip.IsLoopback()) {
+			return nil, errors.New("remote: refusing to send an authentication token over unencrypted HTTP; use HTTPS")
+		}
+	}
+	return u, nil
 }
