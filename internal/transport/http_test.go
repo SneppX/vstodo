@@ -173,3 +173,29 @@ func TestHTTPTransportFetchPackSendsDeduplicatedHaveLines(t *testing.T) {
 		t.Fatalf("got pack %q, want %q", got, fixture)
 	}
 }
+
+
+func TestValidateRemoteURLProtectsAuthenticationTokens(t *testing.T) {
+	for _, raw := range []string{
+		"http://example.com/repo",
+		"http://192.0.2.10/repo",
+		"http://[2001:db8::1]/repo",
+	} {
+		if _, err := validateRemoteURL(raw, "secret"); err == nil || !strings.Contains(err.Error(), "unencrypted HTTP") {
+			t.Errorf("validateRemoteURL(%q) error = %v, want cleartext-auth rejection", raw, err)
+		}
+	}
+	for _, raw := range []string{
+		"https://example.com/repo",
+		"http://localhost/repo",
+		"http://127.0.0.1:8080/repo",
+		"http://[::1]:8080/repo",
+	} {
+		if _, err := validateRemoteURL(raw, "secret"); err != nil {
+			t.Errorf("validateRemoteURL(%q) unexpectedly failed: %v", raw, err)
+		}
+	}
+	if _, err := validateRemoteURL("http://example.com/repo", ""); err != nil {
+		t.Errorf("unauthenticated HTTP remote unexpectedly failed: %v", err)
+	}
+}
