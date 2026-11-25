@@ -23,12 +23,9 @@ func (t *HTTPTransport) PushPack(ctx context.Context, remoteURL, token string, o
 	if !validPushBranchRef(refName) {
 		return fmt.Errorf("remote: invalid branch ref %q", refName)
 	}
-	u, err := url.Parse(remoteURL)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return errors.New("remote: URL must be an absolute HTTP or HTTPS URL")
-	}
-	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return errors.New("remote: credentials, query strings, and fragments are not allowed in remote URLs")
+	u, err := validateRemoteURL(remoteURL, token)
+	if err != nil {
+		return err
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/git-receive-pack"
 
