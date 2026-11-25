@@ -174,7 +174,6 @@ func TestHTTPTransportFetchPackSendsDeduplicatedHaveLines(t *testing.T) {
 	}
 }
 
-
 func TestValidateRemoteURLProtectsAuthenticationTokens(t *testing.T) {
 	for _, raw := range []string{
 		"http://example.com/repo",
