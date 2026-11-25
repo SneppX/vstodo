@@ -280,9 +280,7 @@ func parseServiceAdvertisement(body io.Reader, service string) ([]RemoteRef, err
 	}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].Name < refs[j].Name })
 	return refs, nil
-
 }
-
 
 // validateRemoteURL rejects ambiguous URLs and prevents credentials from being
 // sent over unencrypted network connections. Plain HTTP remains available for
